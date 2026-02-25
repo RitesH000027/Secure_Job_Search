@@ -1,7 +1,7 @@
 """
 Database models for user authentication and management
 """
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, Enum, Text
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, Enum, Text, ForeignKey
 from sqlalchemy.orm import relationship
 from app.database import Base
 from datetime import datetime
@@ -50,7 +50,7 @@ class Profile(Base):
     __tablename__ = "profiles"
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, nullable=False, unique=True, index=True)
+    user_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False, unique=True, index=True)
     
     # Professional information
     headline = Column(String(255))
@@ -85,7 +85,7 @@ class OTPToken(Base):
     __tablename__ = "otp_tokens"
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False, index=True)
     token_hash = Column(String(255), nullable=False)  # Hashed OTP
     purpose = Column(String(50), nullable=False)  # registration, password_reset, resume_download, etc.
     expires_at = Column(DateTime, nullable=False)
