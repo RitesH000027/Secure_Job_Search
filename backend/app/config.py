@@ -41,6 +41,9 @@ class Settings(BaseSettings):
     
     # Security
     CORS_ORIGINS: List[str] = ["http://192.168.3.40", "https://192.168.3.40"]
+    SESSION_COOKIE_SECURE: bool = False
+    SESSION_COOKIE_HTTPONLY: bool = True
+    SESSION_COOKIE_SAMESITE: str = "Lax"
     
     # OTP
     OTP_EXPIRY_MINUTES: int = 5
@@ -51,9 +54,14 @@ class Settings(BaseSettings):
     RATE_LIMIT_PER_MINUTE: int = 60
     LOGIN_RATE_LIMIT_PER_HOUR: int = 10
     
+    # Logging
+    LOG_LEVEL: str = "INFO"
+    LOG_FILE: str = "/var/log/job-platform/app.log"
+    
     class Config:
         env_file = ".env"
         case_sensitive = True
+        extra = "ignore"  # Ignore extra fields in .env
 
 
 # Create global settings instance
