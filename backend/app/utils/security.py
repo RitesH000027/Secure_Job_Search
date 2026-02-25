@@ -4,16 +4,17 @@ Security utilities for password hashing and JWT token management
 from datetime import datetime, timedelta
 from typing import Optional, Dict, Any
 from jose import JWTError, jwt
-from passlib.context import CryptContext
+from argon2 import PasswordHasher
+from argon2.exceptions import VerifyMismatchError
 from app.config import settings
 
-# Password hashing context
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+# Password hasher using Argon2
+ph = PasswordHasher()
 
 
 def hash_password(password: str) -> str:
     """
-    Hash a plain password using bcrypt
+    Hash a plain password using Argon2
     
     Args:
         password: Plain text password
@@ -21,7 +22,7 @@ def hash_password(password: str) -> str:
     Returns:
         Hashed password
     """
-    return pwd_context.hash(password)
+    return ph.hash(password)
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
@@ -35,7 +36,11 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     Returns:
         True if password matches, False otherwise
     """
-    return pwd_context.verify(plain_password, hashed_password)
+    try:
+        ph.verify(hashed_password, plain_password)
+        return True
+    except VerifyMismatchError:
+        return False
 
 
 def create_access_token(data: Dict[str, Any], expires_delta: Optional[timedelta] = None) -> str:
