@@ -1,0 +1,16 @@
+# VM Connection Information
+# DO NOT COMMIT THIS FILE - Already in .gitignore
+
+IP Address: 192.168.3.40
+VM Name: fcs22
+Username: iiitd
+Password: K0Rt!<6c
+
+# SSH Command
+ssh iiitd@192.168.3.40
+
+# SCP Example (to copy files)
+scp file.txt iiitd@192.168.3.40:/home/iiitd/
+
+# SFTP Example
+sftp iiitd@192.168.3.40
