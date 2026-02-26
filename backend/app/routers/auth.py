@@ -1,7 +1,7 @@
 """
 Authentication endpoints for user registration, login, and OTP verification
 """
-from datetime import timedelta
+from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from sqlalchemy.orm import Session
 from app.database import get_db
@@ -209,7 +209,7 @@ async def login(
         )
     
     # Update last login
-    user.updated_at = db.func.now()
+    user.updated_at = datetime.utcnow()
     db.commit()
     
     # Generate tokens
@@ -503,7 +503,7 @@ async def login_with_totp(
             )
     
     # Update last login
-    user.updated_at = db.func.now()
+    user.updated_at = datetime.utcnow()
     db.commit()
     
     # Generate tokens
