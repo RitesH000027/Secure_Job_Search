@@ -69,6 +69,11 @@ class Profile(Base):
     privacy_bio = Column(String(20), default="public")
     privacy_profile_picture = Column(String(20), default="public")
     
+    # Privacy toggles for contact information
+    privacy_show_email = Column(Boolean, default=True)
+    privacy_show_phone = Column(Boolean, default=True)
+    privacy_show_location = Column(Boolean, default=True)
+    
     # Profile viewing stats
     profile_view_count = Column(Integer, default=0)
     allow_profile_view_tracking = Column(Boolean, default=True)
