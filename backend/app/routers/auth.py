@@ -16,6 +16,7 @@ from app.utils.security import (
     create_access_token, create_refresh_token, verify_token
 )
 from app.utils.otp import create_otp_token, verify_otp
+from app.utils.totp import generate_totp_secret, get_totp_uri, generate_qr_code, verify_totp
 from app.dependencies import get_current_user, get_current_verified_user
 from app.config import settings
 
@@ -337,3 +338,177 @@ async def confirm_password_reset(
     db.commit()
     
     return {"message": "Password reset successful. You can now login with your new password."}
+
+
+# ==================== TOTP (2FA) Endpoints ====================
+
+@router.post("/totp/enable", response_model=dict)
+async def enable_totp(
+    current_user: User = Depends(get_current_verified_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Enable TOTP (Time-based OTP) for 2FA
+    
+    Returns QR code and secret for Google Authenticator / Authy
+    """
+    if current_user.totp_enabled:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="TOTP is already enabled"
+        )
+    
+    # Generate new TOTP secret
+    secret = generate_totp_secret()
+    
+    # Save secret to database (but don't enable TOTP yet - requires verification)
+    current_user.totp_secret = secret
+    db.commit()
+    
+    # Generate QR code
+    totp_uri = get_totp_uri(secret, current_user.email)
+    qr_code = generate_qr_code(totp_uri)
+    
+    return {
+        "message": "TOTP secret generated. Scan QR code with authenticator app and verify.",
+        "secret": secret,
+        "qr_code": qr_code,
+        "manual_entry_key": secret
+    }
+
+
+@router.post("/totp/verify", response_model=dict)
+async def verify_totp_setup(
+    token: str,
+    current_user: User = Depends(get_current_verified_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Verify TOTP setup by confirming a code from authenticator app
+    
+    After successful verification, TOTP will be enabled for the account
+    """
+    if not current_user.totp_secret:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="TOTP not initialized. Call /auth/totp/enable first."
+        )
+    
+    if current_user.totp_enabled:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="TOTP is already enabled"
+        )
+    
+    # Verify the TOTP token
+    if not verify_totp(current_user.totp_secret, token):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid TOTP code"
+        )
+    
+    # Enable TOTP
+    current_user.totp_enabled = True
+    db.commit()
+    
+    return {
+        "message": "TOTP successfully enabled for your account",
+        "totp_enabled": True
+    }
+
+
+@router.post("/totp/disable", response_model=dict)
+async def disable_totp(
+    password: str,
+    current_user: User = Depends(get_current_verified_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Disable TOTP (requires password confirmation)
+    """
+    if not current_user.totp_enabled:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="TOTP is not enabled"
+        )
+    
+    # Verify password
+    if not verify_password(password, current_user.hashed_password):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect password"
+        )
+    
+    # Disable TOTP
+    current_user.totp_enabled = False
+    current_user.totp_secret = None
+    db.commit()
+    
+    return {
+        "message": "TOTP disabled successfully",
+        "totp_enabled": False
+    }
+
+
+@router.post("/login-totp", response_model=Token)
+async def login_with_totp(
+    email: str,
+    password: str,
+    totp_code: str,
+    db: Session = Depends(get_db)
+):
+    """
+    Login with email, password, and TOTP code (for users with 2FA enabled)
+    """
+    # Find user
+    user = db.query(User).filter(User.email == email).first()
+    
+    if not user or not verify_password(password, user.hashed_password):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect email or password",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    if not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Account is inactive"
+        )
+    
+    if user.is_suspended:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Account is suspended"
+        )
+    
+    if not user.is_verified:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Email not verified. Please verify your email first."
+        )
+    
+    # Verify TOTP if enabled
+    if user.totp_enabled:
+        if not user.totp_secret:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="TOTP configuration error"
+            )
+        
+        if not verify_totp(user.totp_secret, totp_code):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid TOTP code"
+            )
+    
+    # Update last login
+    user.updated_at = db.func.now()
+    db.commit()
+    
+    # Generate tokens
+    access_token = create_access_token(data={"sub": str(user.id), "email": user.email})
+    refresh_token = create_refresh_token(data={"sub": str(user.id)})
+    
+    return Token(access_token=access_token, refresh_token=refresh_token)
+

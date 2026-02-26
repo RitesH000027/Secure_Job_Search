@@ -35,9 +35,14 @@ class User(Base):
     # Public key for PKI (will be used in later milestones)
     public_key = Column(Text, nullable=True)
     
+    # TOTP (Time-based OTP) for 2FA
+    totp_secret = Column(String(32), nullable=True)  # Base32 encoded secret
+    totp_enabled = Column(Boolean, default=False)
+    
     # Relationships
     profile = relationship("Profile", back_populates="user", uselist=False, cascade="all, delete-orphan")
     otp_tokens = relationship("OTPToken", back_populates="user", cascade="all, delete-orphan")
+    resumes = relationship("Resume", back_populates="user", cascade="all, delete-orphan")
 
     def __repr__(self):
         return f"<User {self.email}>"
