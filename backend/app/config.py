@@ -40,7 +40,7 @@ class Settings(BaseSettings):
     REDIS_URL: str = "redis://localhost:6379/0"
     
     # Security
-    CORS_ORIGINS: List[str] = ["http://192.168.3.40", "https://192.168.3.40", "http://localhost:5173"]
+    CORS_ORIGINS: List[str] = ["http://192.168.3.40", "https://192.168.3.40", "http://localhost:5174"]
     SESSION_COOKIE_SECURE: bool = False
     SESSION_COOKIE_HTTPONLY: bool = True
     SESSION_COOKIE_SAMESITE: str = "Lax"
