@@ -12,6 +12,7 @@ from app.models.user import UserRole
 class UserRegister(BaseModel):
     """Schema for user registration"""
     email: EmailStr
+    mobile_number: str = Field(..., min_length=10, max_length=20)
     password: str = Field(..., min_length=8, max_length=100)
     full_name: str = Field(..., min_length=1, max_length=100)
     role: UserRole = UserRole.USER
@@ -37,12 +38,15 @@ class UserLogin(BaseModel):
 class OTPVerify(BaseModel):
     """Schema for OTP verification"""
     email: EmailStr
-    otp: str = Field(..., min_length=6, max_length=6)
+    mobile_number: str = Field(..., min_length=10, max_length=20)
+    email_otp: str = Field(..., min_length=6, max_length=6)
+    mobile_otp: str = Field(..., min_length=6, max_length=6)
 
 
 class OTPResend(BaseModel):
     """Schema for OTP resend request"""
     email: EmailStr
+    mobile_number: str = Field(..., min_length=10, max_length=20)
 
 
 class PasswordReset(BaseModel):
@@ -92,8 +96,10 @@ class UserBase(BaseModel):
 class UserResponse(UserBase):
     """Schema for user response (without sensitive data)"""
     id: int
+    mobile_number: Optional[str] = None
     is_active: bool
     is_verified: bool
+    is_mobile_verified: bool
     is_suspended: bool
     public_key: Optional[str] = None
     created_at: datetime

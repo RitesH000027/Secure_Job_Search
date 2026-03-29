@@ -1,20 +1,23 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { profileAPI } from '../services/api';
 
+const initialFormState = {
+  headline: '',
+  location: '',
+  bio: '',
+  privacy_show_email: false,
+  privacy_show_phone: false,
+  privacy_show_location: false,
+  allow_profile_view_tracking: true,
+};
+
 const Profile = () => {
-  const [profile, setProfile] = useState(null);
+  const [profileData, setProfileData] = useState(null);
+  const [formData, setFormData] = useState(initialFormState);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
-  const [formData, setFormData] = useState({
-    headline: '',
-    location: '',
-    bio: '',
-    privacy_show_email: false,
-    privacy_show_phone: false,
-    privacy_show_location: false,
-  });
 
   useEffect(() => {
     fetchProfile();
@@ -22,234 +25,201 @@ const Profile = () => {
 
   const fetchProfile = async () => {
     try {
+      setLoading(true);
       const response = await profileAPI.getProfile();
-      setProfile(response.data);
-      if (response.data.profile) {
-        setFormData({
-          headline: response.data.profile.headline || '',
-          location: response.data.profile.location || '',
-          bio: response.data.profile.bio || '',
-          privacy_show_email: response.data.profile.privacy_show_email || false,
-          privacy_show_phone: response.data.profile.privacy_show_phone || false,
-          privacy_show_location: response.data.profile.privacy_show_location || false,
-        });
-      }
+      const user = response.data;
+      const profile = user.profile || {};
+
+      setProfileData(user);
+      setFormData({
+        headline: profile.headline || '',
+        location: profile.location || '',
+        bio: profile.bio || '',
+        privacy_show_email: profile.privacy_show_email || false,
+        privacy_show_phone: profile.privacy_show_phone || false,
+        privacy_show_location: profile.privacy_show_location || false,
+        allow_profile_view_tracking: profile.allow_profile_view_tracking ?? true,
+      });
     } catch (err) {
-      setError('Failed to load profile');
+      setError(err.response?.data?.detail || 'Failed to load profile');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleChange = (e) => {
-    const { name, value, type, checked } = e.target;
-    setFormData({
-      ...formData,
+  const handleChange = (event) => {
+    const { name, value, type, checked } = event.target;
+    setFormData((previous) => ({
+      ...previous,
       [name]: type === 'checkbox' ? checked : value,
-    });
+    }));
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+  const handleSubmit = async (event) => {
+    event.preventDefault();
     setError('');
     setSuccess('');
 
     try {
       await profileAPI.updateProfile(formData);
-      setSuccess('Profile updated successfully!');
+      setSuccess('Profile updated successfully');
       setEditing(false);
-      fetchProfile();
+      await fetchProfile();
     } catch (err) {
       setError(err.response?.data?.detail || 'Failed to update profile');
     }
   };
 
   if (loading) {
-    return (
-      <div className="flex justify-center items-center h-96">
-        <div className="text-gray-500">Loading...</div>
-      </div>
-    );
+    return <div className="li-card p-6 text-sm text-gray-600">Loading profile...</div>;
   }
 
+  const profile = profileData?.profile || {};
+
   return (
-    <div className="px-4 py-6">
-      <div className="bg-white shadow rounded-lg overflow-hidden">
-        <div className="bg-gray-50 px-6 py-4 border-b border-gray-200 flex justify-between items-center">
-          <h2 className="text-2xl font-bold text-gray-900">My Profile</h2>
-          <button
-            onClick={() => setEditing(!editing)}
-            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm font-medium"
-          >
-            {editing ? 'Cancel' : 'Edit Profile'}
+    <div className="space-y-5">
+      <div className="li-card p-6 flex items-center justify-between gap-3">
+        <div>
+          <h1 className="li-title">Profile</h1>
+          <p className="li-subtitle mt-2">Manage your public professional identity.</p>
+        </div>
+        {!editing && (
+          <button onClick={() => setEditing(true)} className="li-btn-primary">
+            Edit Profile
           </button>
-        </div>
-
-        {error && (
-          <div className="mx-6 mt-4 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
-            {error}
-          </div>
         )}
-
-        {success && (
-          <div className="mx-6 mt-4 bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded">
-            {success}
-          </div>
-        )}
-
-        <div className="px-6 py-6">
-          {!editing ? (
-            <div className="space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="border border-gray-200 rounded-md p-4">
-                  <h3 className="text-sm font-medium text-gray-500">Email</h3>
-                  <p className="mt-1 text-base text-gray-900">{profile?.email}</p>
-                </div>
-                <div className="border border-gray-200 rounded-md p-4">
-                  <h3 className="text-sm font-medium text-gray-500">Full Name</h3>
-                  <p className="mt-1 text-base text-gray-900">{profile?.full_name}</p>
-                </div>
-              </div>
-              <div className="border border-gray-200 rounded-md p-4">
-                <h3 className="text-sm font-medium text-gray-500">Headline</h3>
-                <p className="mt-1 text-base text-gray-900">{profile?.profile?.headline || 'Not set'}</p>
-              </div>
-              <div className="border border-gray-200 rounded-md p-4">
-                <h3 className="text-sm font-medium text-gray-500">Location</h3>
-                <p className="mt-1 text-base text-gray-900">{profile?.profile?.location || 'Not set'}</p>
-              </div>
-              <div className="border border-gray-200 rounded-md p-4">
-                <h3 className="text-sm font-medium text-gray-500">Bio</h3>
-                <p className="mt-1 text-base text-gray-700 whitespace-pre-wrap">{profile?.profile?.bio || 'Not set'}</p>
-              </div>
-              <div className="border-2 border-gray-300 rounded-md p-4">
-                <h3 className="text-base font-semibold text-gray-900 mb-3">Privacy Settings</h3>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <div className="flex items-center justify-between bg-gray-50 p-3 rounded">
-                    <span className="text-sm text-gray-700">Show Email</span>
-                    <span className={profile?.profile?.privacy_show_email ? "text-green-600" : "text-gray-400"}>
-                      {profile?.profile?.privacy_show_email ? '✓' : '✗'}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between bg-gray-50 p-3 rounded">
-                    <span className="text-sm text-gray-700">Show Phone</span>
-                    <span className={profile?.profile?.privacy_show_phone ? "text-green-600" : "text-gray-400"}>
-                      {profile?.profile?.privacy_show_phone ? '✓' : '✗'}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between bg-gray-50 p-3 rounded">
-                    <span className="text-sm text-gray-700">Show Location</span>
-                    <span className={profile?.profile?.privacy_show_location ? "text-green-600" : "text-gray-400"}>
-                      {profile?.profile?.privacy_show_location ? '✓' : '✗'}
-                    </span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          ) : (
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div>
-                <label htmlFor="headline" className="block text-sm font-medium text-gray-700 mb-1">
-                  Professional Headline
-                </label>
-                <input
-                  type="text"
-                  name="headline"
-                  id="headline"
-                  value={formData.headline}
-                  onChange={handleChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="e.g., Senior Software Engineer"
-                />
-              </div>
-
-              <div>
-                <label htmlFor="location" className="block text-sm font-medium text-gray-700 mb-1">
-                  Location
-                </label>
-                <input
-                  type="text"
-                  name="location"
-                  id="location"
-                  value={formData.location}
-                  onChange={handleChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="e.g., San Francisco, CA"
-                />
-              </div>
-
-              <div>
-                <label htmlFor="bio" className="block text-sm font-medium text-gray-700 mb-1">
-                  Professional Bio
-                </label>
-                <textarea
-                  name="bio"
-                  id="bio"
-                  rows={5}
-                  value={formData.bio}
-                  onChange={handleChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="Tell us about your experience and skills..."
-                />
-              </div>
-
-              <div className="pt-3 border-t border-gray-200">
-                <h3 className="text-base font-semibold text-gray-900 mb-3">Privacy Controls</h3>
-                <div className="space-y-2">
-                  <div className="flex items-center">
-                    <input
-                      type="checkbox"
-                      name="privacy_show_email"
-                      id="privacy_show_email"
-                      checked={formData.privacy_show_email}
-                      onChange={handleChange}
-                      className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                    />
-                    <label htmlFor="privacy_show_email" className="ml-2 text-sm text-gray-700">
-                      Show email address on public profile
-                    </label>
-                  </div>
-                  <div className="flex items-center">
-                    <input
-                      type="checkbox"
-                      name="privacy_show_phone"
-                      id="privacy_show_phone"
-                      checked={formData.privacy_show_phone}
-                      onChange={handleChange}
-                      className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                    />
-                    <label htmlFor="privacy_show_phone" className="ml-2 text-sm text-gray-700">
-                      Show phone number on public profile
-                    </label>
-                  </div>
-                  <div className="flex items-center">
-                    <input
-                      type="checkbox"
-                      name="privacy_show_location"
-                      id="privacy_show_location"
-                      checked={formData.privacy_show_location}
-                      onChange={handleChange}
-                      className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                    />
-                    <label htmlFor="privacy_show_location" className="ml-2 text-sm text-gray-700">
-                      Show location on public profile
-                    </label>
-                  </div>
-                </div>
-              </div>
-
-              <div className="pt-4">
-                <button
-                  type="submit"
-                  className="w-full py-3 px-4 bg-blue-600 text-white rounded-md hover:bg-blue-700 font-medium"
-                >
-                  Save Changes
-                </button>
-              </div>
-            </form>
-          )}
-        </div>
       </div>
+
+      {error && <div className="li-card border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
+      {success && <div className="li-card border-green-200 bg-green-50 p-3 text-sm text-green-700">{success}</div>}
+
+      {!editing ? (
+        <div className="li-card p-6 space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
+              <p className="text-xs text-gray-500">Full Name</p>
+              <p className="mt-1 text-base font-semibold text-gray-900">{profileData?.full_name || '-'}</p>
+            </div>
+            <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
+              <p className="text-xs text-gray-500">Email</p>
+              <p className="mt-1 text-base font-semibold text-gray-900">{profileData?.email || '-'}</p>
+            </div>
+          </div>
+
+          <div className="rounded-lg border border-gray-200 p-4">
+            <p className="text-xs text-gray-500">Headline</p>
+            <p className="mt-1 text-sm text-gray-800">{profile.headline || 'Not set'}</p>
+          </div>
+          <div className="rounded-lg border border-gray-200 p-4">
+            <p className="text-xs text-gray-500">Location</p>
+            <p className="mt-1 text-sm text-gray-800">{profile.location || 'Not set'}</p>
+          </div>
+          <div className="rounded-lg border border-gray-200 p-4">
+            <p className="text-xs text-gray-500">Bio</p>
+            <p className="mt-1 text-sm text-gray-800 whitespace-pre-wrap">{profile.bio || 'Not set'}</p>
+          </div>
+
+          <div className="border-t border-gray-200 pt-5">
+            <p className="text-sm font-semibold text-gray-900 mb-3">Privacy Settings</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm text-gray-700">
+              <p className="rounded-lg border border-gray-200 px-3 py-2">Email visible: {profile.privacy_show_email ? 'Yes' : 'No'}</p>
+              <p className="rounded-lg border border-gray-200 px-3 py-2">Phone visible: {profile.privacy_show_phone ? 'Yes' : 'No'}</p>
+              <p className="rounded-lg border border-gray-200 px-3 py-2">Location visible: {profile.privacy_show_location ? 'Yes' : 'No'}</p>
+              <p className="rounded-lg border border-gray-200 px-3 py-2">Track profile views: {profile.allow_profile_view_tracking ? 'Yes' : 'No'}</p>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <form onSubmit={handleSubmit} className="li-card p-6 space-y-5">
+          <div>
+            <label htmlFor="headline" className="block text-sm font-medium text-gray-700 mb-1">
+              Headline
+            </label>
+            <input
+              id="headline"
+              name="headline"
+              className="li-input"
+              value={formData.headline}
+              onChange={handleChange}
+              placeholder="e.g., Security Engineer"
+            />
+          </div>
+
+          <div>
+            <label htmlFor="location" className="block text-sm font-medium text-gray-700 mb-1">
+              Location
+            </label>
+            <input
+              id="location"
+              name="location"
+              className="li-input"
+              value={formData.location}
+              onChange={handleChange}
+              placeholder="e.g., Bengaluru"
+            />
+          </div>
+
+          <div>
+            <label htmlFor="bio" className="block text-sm font-medium text-gray-700 mb-1">
+              Bio
+            </label>
+            <textarea
+              id="bio"
+              name="bio"
+              rows={4}
+              className="li-input"
+              value={formData.bio}
+              onChange={handleChange}
+              placeholder="Short summary about your skills and interests"
+            />
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm text-gray-700">
+            <label className="flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2">
+              <input type="checkbox" name="privacy_show_email" checked={formData.privacy_show_email} onChange={handleChange} />
+              Show email on public profile
+            </label>
+            <label className="flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2">
+              <input type="checkbox" name="privacy_show_phone" checked={formData.privacy_show_phone} onChange={handleChange} />
+              Show phone on public profile
+            </label>
+            <label className="flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2">
+              <input type="checkbox" name="privacy_show_location" checked={formData.privacy_show_location} onChange={handleChange} />
+              Show location on public profile
+            </label>
+            <label className="flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2">
+              <input type="checkbox" name="allow_profile_view_tracking" checked={formData.allow_profile_view_tracking} onChange={handleChange} />
+              Enable profile view tracking
+            </label>
+          </div>
+
+          <div className="flex gap-2">
+            <button type="submit" className="li-btn-primary">
+              Save Changes
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setEditing(false);
+                setError('');
+                setSuccess('');
+                setFormData({
+                  headline: profile.headline || '',
+                  location: profile.location || '',
+                  bio: profile.bio || '',
+                  privacy_show_email: profile.privacy_show_email || false,
+                  privacy_show_phone: profile.privacy_show_phone || false,
+                  privacy_show_location: profile.privacy_show_location || false,
+                  allow_profile_view_tracking: profile.allow_profile_view_tracking ?? true,
+                });
+              }}
+              className="li-btn-secondary"
+            >
+              Cancel
+            </button>
+          </div>
+        </form>
+      )}
     </div>
   );
 };

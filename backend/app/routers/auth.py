@@ -2,6 +2,12 @@
 Authentication endpoints for user registration, login, and OTP verification
 """
 from datetime import datetime, timedelta
+import smtplib
+import ssl
+import base64
+import urllib.parse
+import urllib.request
+from email.message import EmailMessage
 from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from sqlalchemy.orm import Session
 from app.database import get_db
@@ -24,19 +30,83 @@ from app.config import settings
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
 
-# TODO: Implement email sending function
 def send_otp_email(email: str, otp: str, purpose: str):
     """
-    Send OTP via email (placeholder - implement with actual email service)
+    Send OTP via SMTP email
     
     Args:
         email: Recipient email address
         otp: OTP code to send
         purpose: Purpose of OTP (registration, password_reset, etc.)
     """
-    # This is a placeholder. In production, integrate with SMTP or email service
-    print(f"[EMAIL] Sending OTP to {email}: {otp} (Purpose: {purpose})")
-    # TODO: Implement actual email sending using SMTP settings from config
+    subject = f"Your OTP Code for {purpose.replace('_', ' ').title()}"
+    body = (
+        f"Your OTP for {purpose.replace('_', ' ')} is: {otp}\n\n"
+        f"This OTP is valid for {settings.OTP_EXPIRY_MINUTES} minutes."
+    )
+
+    message = EmailMessage()
+    message["Subject"] = subject
+    message["From"] = f"{settings.EMAIL_FROM_NAME} <{settings.EMAIL_FROM}>"
+    message["To"] = email
+    message.set_content(body)
+
+    try:
+        with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=15) as smtp:
+            smtp.ehlo()
+            smtp.starttls(context=ssl.create_default_context())
+            smtp.ehlo()
+            if settings.SMTP_USER and settings.SMTP_PASSWORD:
+                smtp.login(settings.SMTP_USER, settings.SMTP_PASSWORD)
+            smtp.send_message(message)
+    except Exception as exc:
+        print(f"[EMAIL][ERROR] Failed to send OTP to {email}: {exc}")
+
+
+def send_otp_sms(mobile_number: str, otp: str, purpose: str):
+    """
+    Send OTP via SMS (simulated provider hook)
+
+    Replace this implementation with your SMS provider integration if available.
+    """
+    message_body = (
+        f"Your OTP for {purpose.replace('_', ' ')} is: {otp}. "
+        f"Valid for {settings.OTP_EXPIRY_MINUTES} minutes."
+    )
+
+    if not (
+        settings.TWILIO_ACCOUNT_SID
+        and settings.TWILIO_AUTH_TOKEN
+        and settings.TWILIO_FROM_NUMBER
+    ):
+        print(f"[SMS] Sending OTP to {mobile_number}: {otp} (Purpose: {purpose})")
+        return
+
+    twilio_url = (
+        "https://api.twilio.com/2010-04-01/Accounts/"
+        f"{settings.TWILIO_ACCOUNT_SID}/Messages.json"
+    )
+
+    payload = urllib.parse.urlencode(
+        {
+            "To": mobile_number,
+            "From": settings.TWILIO_FROM_NUMBER,
+            "Body": message_body,
+        }
+    ).encode()
+
+    request = urllib.request.Request(twilio_url, data=payload, method="POST")
+    auth = base64.b64encode(
+        f"{settings.TWILIO_ACCOUNT_SID}:{settings.TWILIO_AUTH_TOKEN}".encode()
+    ).decode()
+    request.add_header("Authorization", f"Basic {auth}")
+    request.add_header("Content-Type", "application/x-www-form-urlencoded")
+
+    try:
+        with urllib.request.urlopen(request, timeout=15):
+            return
+    except Exception as exc:
+        print(f"[SMS][ERROR] Failed to send OTP to {mobile_number}: {exc}")
 
 
 @router.post("/register", response_model=dict, status_code=status.HTTP_201_CREATED)
@@ -60,14 +130,23 @@ async def register(
             detail="Email already registered"
         )
     
+    existing_mobile = db.query(User).filter(User.mobile_number == user_data.mobile_number).first()
+    if existing_mobile:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Mobile number already registered"
+        )
+
     # Create new user
     new_user = User(
         email=user_data.email,
+        mobile_number=user_data.mobile_number,
         hashed_password=hash_password(user_data.password),
         full_name=user_data.full_name,
         role=user_data.role,
         is_active=True,
         is_verified=False,
+        is_mobile_verified=False,
         is_suspended=False
     )
     
@@ -80,13 +159,16 @@ async def register(
     db.add(profile)
     db.commit()
     
-    # Generate and send OTP
-    otp, otp_token = create_otp_token(db, new_user.id, purpose="registration")
-    background_tasks.add_task(send_otp_email, new_user.email, otp, "registration")
+    # Generate and send OTPs
+    email_otp, _ = create_otp_token(db, new_user.id, purpose="registration_email")
+    mobile_otp, _ = create_otp_token(db, new_user.id, purpose="registration_mobile")
+    background_tasks.add_task(send_otp_email, new_user.email, email_otp, "registration_email")
+    background_tasks.add_task(send_otp_sms, new_user.mobile_number, mobile_otp, "registration_mobile")
     
     return {
-        "message": "Registration successful. Please check your email for OTP verification code.",
-        "email": new_user.email
+        "message": "Registration successful. Please verify both email and mobile OTP codes.",
+        "email": new_user.email,
+        "mobile_number": new_user.mobile_number
     }
 
 
@@ -110,23 +192,49 @@ async def verify_otp_endpoint(
             detail="User not found"
         )
     
-    if user.is_verified:
+    if user.is_verified and user.is_mobile_verified:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Email already verified"
+            detail="Email and mobile already verified"
+        )
+
+    if user.mobile_number != otp_data.mobile_number:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Mobile number does not match the registered account"
         )
     
-    # Verify OTP
-    is_valid, error_message = verify_otp(db, user.id, otp_data.otp, purpose="registration")
-    
-    if not is_valid:
+    # Verify email OTP
+    is_valid_email, email_error = verify_otp(
+        db,
+        user.id,
+        otp_data.email_otp,
+        purpose="registration_email"
+    )
+
+    if not is_valid_email:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=error_message
+            detail=email_error
+        )
+
+    # Verify mobile OTP
+    is_valid_mobile, mobile_error = verify_otp(
+        db,
+        user.id,
+        otp_data.mobile_otp,
+        purpose="registration_mobile"
+    )
+    
+    if not is_valid_mobile:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=mobile_error
         )
     
     # Activate user account
     user.is_verified = True
+    user.is_mobile_verified = True
     db.commit()
     
     # Generate tokens
@@ -156,17 +264,25 @@ async def resend_otp(
             detail="User not found"
         )
     
-    if user.is_verified:
+    if user.is_verified and user.is_mobile_verified:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Email already verified"
+            detail="Email and mobile already verified"
+        )
+
+    if user.mobile_number != otp_data.mobile_number:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Mobile number does not match the registered account"
         )
     
-    # Generate and send new OTP
-    otp, otp_token = create_otp_token(db, user.id, purpose="registration")
-    background_tasks.add_task(send_otp_email, user.email, otp, "registration")
+    # Generate and resend new OTPs
+    email_otp, _ = create_otp_token(db, user.id, purpose="registration_email")
+    mobile_otp, _ = create_otp_token(db, user.id, purpose="registration_mobile")
+    background_tasks.add_task(send_otp_email, user.email, email_otp, "registration_email")
+    background_tasks.add_task(send_otp_sms, user.mobile_number, mobile_otp, "registration_mobile")
     
-    return {"message": "OTP resent successfully. Please check your email."}
+    return {"message": "OTPs resent successfully. Please check your email and mobile."}
 
 
 @router.post("/login", response_model=Token)
@@ -206,6 +322,12 @@ async def login(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Email not verified. Please verify your email first."
+        )
+
+    if user.mobile_number and not user.is_mobile_verified:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Mobile number not verified. Please verify your mobile OTP first."
         )
     
     # Update last login
@@ -486,6 +608,12 @@ async def login_with_totp(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Email not verified. Please verify your email first."
+        )
+
+    if user.mobile_number and not user.is_mobile_verified:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Mobile number not verified. Please verify your mobile OTP first."
         )
     
     # Verify TOTP if enabled

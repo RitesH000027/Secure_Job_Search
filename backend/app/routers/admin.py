@@ -8,8 +8,11 @@ from sqlalchemy import func
 from app.database import get_db
 from app.models.user import User, Profile
 from app.models.resume import Resume
-from app.schemas.user import UserResponse
+from app.models.networking import AuditLog
+from app.schemas.user import UserResponse, UserSuspend
+from app.schemas.networking import AuditLogResponse
 from app.dependencies import get_current_admin
+from app.utils.audit import log_audit_event
 
 
 router = APIRouter(prefix="/admin", tags=["Admin Dashboard"])
@@ -146,7 +149,7 @@ async def get_user_details(
 @router.post("/users/{user_id}/suspend", response_model=dict)
 async def suspend_user(
     user_id: int,
-    reason: str,
+    suspend_data: UserSuspend,
     current_admin: User = Depends(get_current_admin),
     db: Session = Depends(get_db)
 ):
@@ -178,11 +181,19 @@ async def suspend_user(
         )
     
     user.is_suspended = True
+    log_audit_event(
+        db,
+        action="user_suspended",
+        target_type="user",
+        actor_user_id=current_admin.id,
+        target_id=str(user_id),
+        details={"reason": suspend_data.reason},
+    )
     db.commit()
     
     return {
         "message": f"User {user.email} suspended successfully",
-        "reason": reason,
+        "reason": suspend_data.reason,
         "user_id": user_id
     }
 
@@ -212,6 +223,13 @@ async def activate_user(
     
     user.is_suspended = False
     user.is_active = True
+    log_audit_event(
+        db,
+        action="user_activated",
+        target_type="user",
+        actor_user_id=current_admin.id,
+        target_id=str(user_id),
+    )
     db.commit()
     
     return {
@@ -249,6 +267,14 @@ async def delete_user(
         )
     
     email = user.email
+    log_audit_event(
+        db,
+        action="user_deleted",
+        target_type="user",
+        actor_user_id=current_admin.id,
+        target_id=str(user_id),
+        details={"email": email},
+    )
     
     # Delete will cascade to profile, otp_tokens, and resumes
     db.delete(user)
@@ -331,3 +357,20 @@ async def get_recent_activity(
             for r in recent_resumes
         ]
     }
+
+
+@router.get("/audit-logs", response_model=list[AuditLogResponse])
+async def get_audit_logs(
+    limit: int = Query(100, ge=1, le=1000),
+    current_admin: User = Depends(get_current_admin),
+    db: Session = Depends(get_db)
+):
+    """
+    Get recent tamper-evident audit log entries.
+    """
+    return (
+        db.query(AuditLog)
+        .order_by(AuditLog.created_at.desc())
+        .limit(limit)
+        .all()
+    )

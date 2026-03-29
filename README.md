@@ -1,4 +1,4 @@
-# Secure Job Search & Professional Networking Platform
+# CareerBridge
 
 A secure, full-stack job search and networking platform with end-to-end encryption, PKI-backed trust, and tamper-evident audit logging.
 

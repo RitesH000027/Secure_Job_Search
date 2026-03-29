@@ -10,7 +10,7 @@ class Settings(BaseSettings):
     """Application settings loaded from environment variables"""
     
     # Application
-    APP_NAME: str = "Secure Job Platform"
+    APP_NAME: str = "CareerBridge"
     DEBUG: bool = True
     SECRET_KEY: str
     ALGORITHM: str = "HS256"
@@ -26,7 +26,12 @@ class Settings(BaseSettings):
     SMTP_USER: str = ""
     SMTP_PASSWORD: str = ""
     EMAIL_FROM: str = "noreply@jobplatform.com"
-    EMAIL_FROM_NAME: str = "Secure Job Platform"
+    EMAIL_FROM_NAME: str = "CareerBridge"
+
+    # SMS (for mobile OTP) - Twilio
+    TWILIO_ACCOUNT_SID: str = ""
+    TWILIO_AUTH_TOKEN: str = ""
+    TWILIO_FROM_NUMBER: str = ""
     
     # File Upload
     UPLOAD_DIR: str = "/home/iiitd/projects/FCS/backend/uploads"
@@ -40,7 +45,14 @@ class Settings(BaseSettings):
     REDIS_URL: str = "redis://localhost:6379/0"
     
     # Security
-    CORS_ORIGINS: List[str] = ["http://192.168.3.40", "https://192.168.3.40", "http://localhost:5174"]
+    CORS_ORIGINS: List[str] = [
+        "http://192.168.3.40",
+        "https://192.168.3.40",
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:5174",
+        "http://127.0.0.1:5174",
+    ]
     SESSION_COOKIE_SECURE: bool = False
     SESSION_COOKIE_HTTPONLY: bool = True
     SESSION_COOKIE_SAMESITE: str = "Lax"

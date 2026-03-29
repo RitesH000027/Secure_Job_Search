@@ -23,11 +23,13 @@ class User(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     email = Column(String(255), unique=True, index=True, nullable=False)
+    mobile_number = Column(String(20), unique=True, index=True, nullable=True)
     hashed_password = Column(String(255), nullable=False)
     full_name = Column(String(255))
     role = Column(Enum(UserRole), default=UserRole.USER, nullable=False)
     is_active = Column(Boolean, default=False)  # Activated after OTP verification
     is_verified = Column(Boolean, default=False)
+    is_mobile_verified = Column(Boolean, default=False)
     is_suspended = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

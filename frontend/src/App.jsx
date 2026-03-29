@@ -7,6 +7,8 @@ import Dashboard from './pages/Dashboard';
 import Profile from './pages/Profile';
 import ResumeUpload from './pages/ResumeUpload';
 import AdminDashboard from './pages/AdminDashboard';
+import Jobs from './pages/Jobs';
+import Messages from './pages/Messages';
 import PrivateRoute from './components/PrivateRoute';
 
 function App() {
@@ -30,6 +32,16 @@ function App() {
           <Route path="/resume" element={
             <PrivateRoute>
               <ResumeUpload />
+            </PrivateRoute>
+          } />
+          <Route path="/jobs" element={
+            <PrivateRoute>
+              <Jobs />
+            </PrivateRoute>
+          } />
+          <Route path="/messages" element={
+            <PrivateRoute>
+              <Messages />
             </PrivateRoute>
           } />
           <Route path="/admin" element={

@@ -63,9 +63,10 @@ const ResumeUpload = () => {
     formData.append('file', file);
 
     try {
-      await resumeAPI.upload(formData);
+      await resumeAPI.upload(formData, isPublic);
       setSuccess('Resume uploaded and encrypted successfully!');
       setFile(null);
+      setIsPublic(false);
       e.target.reset();
       loadResumes();
     } catch (err) {
@@ -102,9 +103,9 @@ const ResumeUpload = () => {
     }
   };
 
-  const handleToggleVisibility = async (id) => {
+  const handleToggleVisibility = async (id, currentVisibility) => {
     try {
-      await resumeAPI.toggleVisibility(id);
+      await resumeAPI.toggleVisibility(id, !currentVisibility);
       setSuccess('Resume visibility updated');
       loadResumes();
     } catch (err) {
@@ -113,129 +114,77 @@ const ResumeUpload = () => {
   };
 
   return (
-    <div className="px-4 py-6">
-      <div className="bg-white shadow rounded-lg overflow-hidden">
-        <div className="bg-gray-50 px-6 py-4 border-b border-gray-200">
-          <h2 className="text-2xl font-bold text-gray-900">Resume Manager</h2>
-          <p className="text-sm text-gray-500 mt-1">Upload and manage your encrypted resumes</p>
+    <div className="space-y-4">
+      <div className="li-card p-6">
+        <h1 className="text-xl font-semibold text-gray-900">Resume Manager</h1>
+        <p className="mt-1 text-sm text-gray-600">Upload encrypted resumes and control recruiter visibility.</p>
+      </div>
+
+      {error && <div className="li-card border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
+      {success && <div className="li-card border-green-200 bg-green-50 p-3 text-sm text-green-700">{success}</div>}
+
+      <form onSubmit={handleUpload} className="li-card p-6 space-y-4">
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">Upload New Resume</label>
+          <input
+            type="file"
+            accept=".pdf,.docx"
+            onChange={handleFileChange}
+            className="block w-full text-sm text-gray-600 file:mr-3 file:px-4 file:py-2 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-[#0a66c2] file:text-white hover:file:bg-[#004182]"
+          />
+          <p className="mt-2 text-xs text-gray-500">Accepted formats: PDF or DOCX, max size 10MB</p>
         </div>
 
-        <div className="px-6 py-6">
-          {error && (
-            <div className="mb-4 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
-              {error}
-            </div>
-          )}
-
-          {success && (
-            <div className="mb-4 bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded">
-              {success}
-            </div>
-          )}
-
-          <form onSubmit={handleUpload} className="mb-8 bg-gray-50 p-6 rounded-lg border border-gray-200">
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Upload New Resume
-                </label>
-                <input
-                  type="file"
-                  accept=".pdf,.docx"
-                  onChange={handleFileChange}
-                  className="block w-full text-sm text-gray-600 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-medium file:bg-blue-600 file:text-white hover:file:bg-blue-700 file:cursor-pointer"
-                />
-                {file && (
-                  <div className="mt-2 p-3 bg-white rounded border border-gray-300">
-                    <p className="text-sm font-medium text-gray-900">{file.name}</p>
-                    <p className="text-xs text-gray-500">{(file.size / 1024).toFixed(2)} KB</p>
-                  </div>
-                )}
-                <p className="mt-1 text-xs text-gray-500">PDF or DOCX, max 10MB</p>
-              </div>
-
-              <div className="flex items-center">
-                <input
-                  type="checkbox"
-                  id="isPublic"
-                  checked={isPublic}
-                  onChange={(e) => setIsPublic(e.target.checked)}
-                  className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                />
-                <label htmlFor="isPublic" className="ml-2 text-sm text-gray-700">
-                  Make resume publicly visible to recruiters
-                </label>
-              </div>
-
-              <button
-                type="submit"
-                disabled={uploading || !file}
-                className="w-full py-3 px-4 bg-blue-600 text-white rounded-md hover:bg-blue-700 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {uploading ? 'Uploading...' : 'Upload Resume'}
-              </button>
-            </div>
-          </form>
-
-          <div className="border-t border-gray-200 pt-6">
-            <h3 className="text-xl font-bold text-gray-900 mb-4">My Resumes</h3>
-            
-            {loading ? (
-              <div className="flex justify-center items-center py-12">
-                <div className="text-gray-500">Loading...</div>
-              </div>
-            ) : resumes.length === 0 ? (
-              <div className="text-center py-12 bg-gray-50 rounded-md border border-gray-200">
-                <p className="text-base text-gray-600">No resumes uploaded yet</p>
-                <p className="mt-1 text-sm text-gray-500">Upload your first resume to get started</p>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {resumes.map((resume) => (
-                  <div
-                    key={resume.id}
-                    className="border border-gray-200 rounded-md p-4 hover:border-gray-300 hover:shadow-sm transition-all"
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex-1">
-                        <h4 className="text-base font-medium text-gray-900">{resume.original_filename}</h4>
-                        <div className="mt-1 flex flex-wrap gap-3 text-sm text-gray-500">
-                          <span>{(resume.file_size / 1024).toFixed(2)} KB</span>
-                          <span>•</span>
-                          <span>{new Date(resume.uploaded_at).toLocaleDateString()}</span>
-                          <span>•</span>
-                          <span className={resume.is_public ? 'text-green-600' : 'text-gray-500'}>
-                            {resume.is_public ? 'Public' : 'Private'}
-                          </span>
-                        </div>
-                      </div>
-                      <div className="flex gap-2 ml-4">
-                        <button
-                          onClick={() => handleDownload(resume.id, resume.original_filename)}
-                          className="px-3 py-1.5 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm"
-                        >
-                          Download
-                        </button>
-                        <button
-                          onClick={() => handleToggleVisibility(resume.id)}
-                          className="px-3 py-1.5 bg-gray-600 text-white rounded-md hover:bg-gray-700 text-sm"
-                        >
-                          Toggle
-                        </button>
-                        <button
-                          onClick={() => handleDelete(resume.id)}
-                          className="px-3 py-1.5 bg-red-600 text-white rounded-md hover:bg-red-700 text-sm"
-                        >
-                          Delete
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
+        {file && (
+          <div className="rounded-lg border border-gray-200 p-3 bg-gray-50">
+            <p className="text-sm font-medium text-gray-900">{file.name}</p>
+            <p className="text-xs text-gray-500">{(file.size / 1024).toFixed(2)} KB</p>
           </div>
+        )}
+
+        <label className="flex items-center gap-2 text-sm text-gray-700">
+          <input
+            type="checkbox"
+            checked={isPublic}
+            onChange={(e) => setIsPublic(e.target.checked)}
+            className="h-4 w-4 rounded border-gray-300 text-[#0a66c2]"
+          />
+          Make resume visible to recruiters
+        </label>
+
+        <button type="submit" disabled={uploading || !file} className="li-btn-primary disabled:opacity-50 disabled:cursor-not-allowed">
+          {uploading ? 'Uploading...' : 'Upload Resume'}
+        </button>
+      </form>
+
+      <div className="li-card overflow-hidden">
+        <div className="px-5 py-4 border-b border-gray-200">
+          <h2 className="text-base font-semibold text-gray-900">My Resumes</h2>
         </div>
+
+        {loading ? (
+          <div className="p-5 text-sm text-gray-600">Loading resumes...</div>
+        ) : resumes.length === 0 ? (
+          <div className="p-5 text-sm text-gray-600">No resumes uploaded yet.</div>
+        ) : (
+          <div className="divide-y divide-gray-100">
+            {resumes.map((resume) => (
+              <div key={resume.id} className="p-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <p className="text-sm font-semibold text-gray-900">{resume.original_filename}</p>
+                  <p className="text-xs text-gray-500 mt-1">
+                    {(resume.file_size / 1024).toFixed(2)} KB • {new Date(resume.uploaded_at).toLocaleDateString()} • {resume.is_public ? 'Public' : 'Private'}
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <button onClick={() => handleDownload(resume.id, resume.original_filename)} className="li-btn-primary">Download</button>
+                  <button onClick={() => handleToggleVisibility(resume.id, resume.is_public)} className="li-btn-secondary">Toggle Visibility</button>
+                  <button onClick={() => handleDelete(resume.id)} className="px-4 py-2 rounded-full text-sm font-semibold border border-red-300 text-red-700 hover:bg-red-50">Delete</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

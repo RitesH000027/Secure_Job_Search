@@ -7,12 +7,11 @@ const Login = () => {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  
   const { login } = useAuth();
   const navigate = useNavigate();
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+  const handleSubmit = async (event) => {
+    event.preventDefault();
     setError('');
     setLoading(true);
 
@@ -20,75 +19,57 @@ const Login = () => {
       await login(email, password);
       navigate('/dashboard');
     } catch (err) {
-      setError(err.response?.data?.detail || 'Login failed. Please try again.');
+      setError(err.response?.data?.detail || 'Unable to sign in with those credentials.');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-md w-full bg-white p-8 rounded-lg shadow-md">
-        <div className="text-center mb-8">
-          <h2 className="text-3xl font-bold text-gray-900">Sign In</h2>
-          <p className="mt-2 text-sm text-gray-600">
-            Don't have an account?{' '}
-            <Link to="/register" className="font-medium text-blue-600 hover:text-blue-500">
-              Sign up
+    <div className="min-h-screen bg-[#f3f2ef] flex items-center justify-center px-4">
+      <div className="w-full max-w-5xl grid md:grid-cols-2 gap-8 items-center">
+        <div>
+          <img src="/CB.png" alt="CareerBridge" className="w-14 h-14 rounded-lg object-cover border border-gray-200 bg-white" />
+          <h1 className="mt-6 text-4xl font-light text-[#0a66c2] leading-tight">Welcome back to your professional network</h1>
+          <p className="mt-4 text-gray-600">Sign in to manage your profile, applications, and recruiter conversations.</p>
+        </div>
+
+        <div className="li-card p-8 shadow-sm">
+          <h2 className="text-3xl font-semibold text-gray-900">Sign in</h2>
+          <p className="text-sm text-gray-500 mt-1">Stay updated on your professional world</p>
+
+          <form onSubmit={handleSubmit} className="mt-6 space-y-4">
+            {error && <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</div>}
+
+            <input
+              type="email"
+              className="li-input"
+              placeholder="Email"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              required
+            />
+            <input
+              type="password"
+              className="li-input"
+              placeholder="Password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              required
+            />
+
+            <button type="submit" className="li-btn-primary w-full" disabled={loading}>
+              {loading ? 'Signing in...' : 'Sign in'}
+            </button>
+          </form>
+
+          <p className="mt-5 text-sm text-gray-600">
+            New to CareerBridge?{' '}
+            <Link className="text-[#0a66c2] font-semibold hover:underline" to="/register">
+              Join now
             </Link>
           </p>
         </div>
-        <form className="space-y-6" onSubmit={handleSubmit}>
-          {error && (
-            <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
-              {error}
-            </div>
-          )}
-          <div className="space-y-4">
-            <div>
-              <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
-                Email address
-              </label>
-              <input
-                id="email"
-                name="email"
-                type="email"
-                autoComplete="email"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                placeholder="you@example.com"
-              />
-            </div>
-            <div>
-              <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1">
-                Password
-              </label>
-              <input
-                id="password"
-                name="password"
-                type="password"
-                autoComplete="current-password"
-                required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                placeholder="••••••••"
-              />
-            </div>
-          </div>
-
-          <div>
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {loading ? 'Signing in...' : 'Sign in'}
-            </button>
-          </div>
-        </form>
       </div>
     </div>
   );

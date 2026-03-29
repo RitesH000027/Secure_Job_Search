@@ -1,5 +1,5 @@
 # Milestone 1 Report
-## Secure Job Search & Professional Networking Platform
+## CareerBridge
 
 **Submitted By:** [Your Name/Team]  
 **Date:** February 13, 2026  
@@ -209,7 +209,7 @@ Shows: Automatic redirect to https://192.168.3.40/
 ```json
 Response:
 {
-  "message": "Secure Job Platform API",
+  "message": "CareerBridge API",
   "status": "operational",
   "version": "0.1.0"
 }
@@ -251,7 +251,7 @@ Response:
 **Configuration:**
 ```ini
 [Unit]
-Description=Secure Job Platform API
+Description=CareerBridge API
 After=network.target postgresql.service
 
 [Service]

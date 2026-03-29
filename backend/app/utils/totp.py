@@ -18,7 +18,7 @@ def generate_totp_secret() -> str:
     return pyotp.random_base32()
 
 
-def get_totp_uri(secret: str, email: str, issuer: str = "Secure Job Platform") -> str:
+def get_totp_uri(secret: str, email: str, issuer: str = "CareerBridge") -> str:
     """
     Generate TOTP provisioning URI for QR code
     

@@ -1,9 +1,9 @@
 Course Project Requirements
 
-Secure Job Search & Professional Networking Platform
+CareerBridge
 
 1 Introduction
-The Secure Job Search and Professional Networking Platform is intended to provide end-to-end security
+CareerBridge is intended to provide end-to-end security
 for professional interactions, private messaging, resume sharing, and job application workflows. The
 goal is to build a robust system that ensures confidentiality, integrity, and availability of user data
 while integrating strong user validation mechanisms, OTP-based authentication, PKI-backed trust, and
