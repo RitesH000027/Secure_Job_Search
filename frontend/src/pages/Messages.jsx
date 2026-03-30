@@ -20,15 +20,12 @@ const decodeCiphertext = (input) => {
 
 const getApiErrorMessage = (error, fallbackMessage) => {
   const detail = error?.response?.data?.detail;
-
   if (Array.isArray(detail)) {
     return detail.map((item) => item?.msg || 'Validation error').join(', ');
   }
-
   if (typeof detail === 'string' && detail.trim()) {
     return detail;
   }
-
   return fallbackMessage;
 };
 
@@ -45,7 +42,12 @@ const Messages = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [activeFriendId, setActiveFriendId] = useState(null);
   const [activeConversationId, setActiveConversationId] = useState(null);
+  const [activeConversationTitle, setActiveConversationTitle] = useState('');
+  const [activeConversationSubtitle, setActiveConversationSubtitle] = useState('');
   const [messageInput, setMessageInput] = useState('');
+
+  const [groupName, setGroupName] = useState('');
+  const [groupMemberIds, setGroupMemberIds] = useState([]);
 
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [sending, setSending] = useState(false);
@@ -62,37 +64,39 @@ const Messages = () => {
       setSearchResults([]);
       return;
     }
-
     const timeout = setTimeout(() => {
       searchUsers(searchQuery.trim());
     }, 300);
-
     return () => clearTimeout(timeout);
   }, [searchQuery]);
 
-  const friendMap = useMemo(() => {
-    return friends.reduce((map, friend) => {
-      map[friend.id] = friend;
-      return map;
-    }, {});
-  }, [friends]);
+  const friendMap = useMemo(
+    () =>
+      friends.reduce((map, friend) => {
+        map[friend.id] = friend;
+        return map;
+      }, {}),
+    [friends]
+  );
 
   const conversationMapByFriendId = useMemo(() => {
     const map = {};
-
     conversations.forEach((conversation) => {
       if (conversation.is_group) {
         return;
       }
-
       const otherUserId = (conversation.participant_ids || []).find((participantId) => participantId !== user?.id);
       if (otherUserId) {
         map[otherUserId] = conversation;
       }
     });
-
     return map;
   }, [conversations, user?.id]);
+
+  const groupConversations = useMemo(
+    () => (conversations || []).filter((conversation) => conversation.is_group),
+    [conversations]
+  );
 
   const loadSidebarData = async () => {
     try {
@@ -102,7 +106,6 @@ const Messages = () => {
         connectionAPI.listReceivedRequests(),
         connectionAPI.listSentRequests(),
       ]);
-
       setFriends(friendsResponse.data || []);
       setReceivedRequests(receivedResponse.data || []);
       setSentRequests(sentResponse.data || []);
@@ -126,6 +129,19 @@ const Messages = () => {
       setSearchResults(response.data || []);
     } catch {
       setSearchResults([]);
+    }
+  };
+
+  const loadMessages = async (conversationId) => {
+    try {
+      setLoadingMessages(true);
+      const response = await messageAPI.listMessages(conversationId);
+      setMessages(response.data || []);
+    } catch (err) {
+      setError(getApiErrorMessage(err, 'Failed to load messages'));
+      setMessages([]);
+    } finally {
+      setLoadingMessages(false);
     }
   };
 
@@ -177,6 +193,8 @@ const Messages = () => {
       if (activeFriendId === friendId) {
         setActiveFriendId(null);
         setActiveConversationId(null);
+        setActiveConversationTitle('');
+        setActiveConversationSubtitle('');
         setMessages([]);
       }
       setSuccess('Friend removed');
@@ -194,7 +212,6 @@ const Messages = () => {
       setActiveFriendId(friendId);
 
       let conversation = conversationMapByFriendId[friendId];
-
       if (!conversation) {
         const response = await messageAPI.createConversation({
           participant_ids: [friendId],
@@ -206,28 +223,61 @@ const Messages = () => {
       }
 
       setActiveConversationId(conversation.id);
+      setActiveConversationTitle(friendMap[friendId]?.full_name || `User #${friendId}`);
+      setActiveConversationSubtitle(friendMap[friendId]?.headline || friendMap[friendId]?.role || 'Connected friend');
       await loadMessages(conversation.id);
     } catch (err) {
       setError(getApiErrorMessage(err, 'Unable to open chat. Ensure you are connected first.'));
     }
   };
 
-  const loadMessages = async (conversationId) => {
+  const openGroupConversation = async (conversation) => {
     try {
-      setLoadingMessages(true);
-      const response = await messageAPI.listMessages(conversationId);
-      setMessages(response.data || []);
+      setError('');
+      setSuccess('');
+      setActiveFriendId(null);
+      setActiveConversationId(conversation.id);
+      setActiveConversationTitle(conversation.name || `Group #${conversation.id}`);
+      setActiveConversationSubtitle(`${(conversation.participant_ids || []).length} participants`);
+      await loadMessages(conversation.id);
     } catch (err) {
-      setError(getApiErrorMessage(err, 'Failed to load messages'));
-      setMessages([]);
-    } finally {
-      setLoadingMessages(false);
+      setError(getApiErrorMessage(err, 'Failed to open group conversation'));
+    }
+  };
+
+  const toggleGroupMember = (friendId) => {
+    setGroupMemberIds((previous) =>
+      previous.includes(friendId) ? previous.filter((id) => id !== friendId) : [...previous, friendId]
+    );
+  };
+
+  const handleCreateGroup = async (event) => {
+    event.preventDefault();
+    if (groupMemberIds.length < 2) {
+      setError('Select at least 2 friends to create a group chat.');
+      return;
+    }
+
+    try {
+      setError('');
+      setSuccess('');
+      const response = await messageAPI.createConversation({
+        participant_ids: groupMemberIds,
+        is_group: true,
+        name: groupName.trim() || null,
+      });
+      setGroupName('');
+      setGroupMemberIds([]);
+      setSuccess('Group conversation created');
+      await loadConversations();
+      await openGroupConversation(response.data);
+    } catch (err) {
+      setError(getApiErrorMessage(err, 'Failed to create group conversation'));
     }
   };
 
   const handleSendMessage = async (event) => {
     event.preventDefault();
-
     if (!activeConversationId || !messageInput.trim()) {
       return;
     }
@@ -247,8 +297,6 @@ const Messages = () => {
       setSending(false);
     }
   };
-
-  const activeFriend = activeFriendId ? friendMap[activeFriendId] : null;
 
   return (
     <div className="space-y-5">
@@ -306,40 +354,76 @@ const Messages = () => {
                 ))}
               </div>
             )}
-            {sentRequests.length > 0 && (
-              <p className="text-xs text-gray-500 mt-2">Sent requests: {sentRequests.length}</p>
-            )}
+            {sentRequests.length > 0 && <p className="text-xs text-gray-500 mt-2">Sent requests: {sentRequests.length}</p>}
           </div>
 
-          <div className="p-4">
+          <form onSubmit={handleCreateGroup} className="p-4 border-b border-gray-200 space-y-2">
+            <p className="text-sm font-semibold text-gray-900">Create Group</p>
+            <input
+              className="li-input"
+              placeholder="Group name (optional)"
+              value={groupName}
+              onChange={(event) => setGroupName(event.target.value)}
+            />
+            <div className="max-h-32 overflow-y-auto border border-gray-200 rounded-lg p-2 space-y-1">
+              {friends.length === 0 ? (
+                <p className="text-xs text-gray-500">Add friends first</p>
+              ) : (
+                friends.map((friend) => (
+                  <label key={friend.id} className="flex items-center gap-2 text-xs text-gray-700">
+                    <input type="checkbox" checked={groupMemberIds.includes(friend.id)} onChange={() => toggleGroupMember(friend.id)} />
+                    <span>{friend.full_name}</span>
+                  </label>
+                ))
+              )}
+            </div>
+            <button type="submit" className="li-btn-primary !py-1.5 !px-3" disabled={friends.length === 0}>Create Group Chat</button>
+          </form>
+
+          <div className="p-4 border-b border-gray-200">
             <p className="text-sm font-semibold text-gray-900 mb-2">Friends</p>
             {friends.length === 0 ? (
               <p className="text-sm text-gray-500">No connections yet.</p>
             ) : (
               <div className="space-y-2">
                 {friends.map((friend) => (
-                  <button
+                  <div
                     key={friend.id}
-                    className={`w-full text-left rounded-lg border p-3 transition-colors ${
+                    className={`rounded-lg border p-3 transition-colors ${
                       activeFriendId === friend.id ? 'border-[#0a66c2] bg-blue-50' : 'border-gray-200 hover:bg-gray-50'
                     }`}
                   >
                     <div className="flex items-start justify-between gap-2">
-                      <div onClick={() => openChatWithFriend(friend.id)}>
+                      <button type="button" className="text-left" onClick={() => openChatWithFriend(friend.id)}>
                         <p className="text-sm font-semibold text-gray-900">{friend.full_name}</p>
                         <p className="text-xs text-gray-500">{friend.headline || friend.role}</p>
-                      </div>
-                      <button
-                        type="button"
-                        className="text-xs text-red-600 hover:underline"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          handleRemoveFriend(friend.id);
-                        }}
-                      >
+                      </button>
+                      <button type="button" className="text-xs text-red-600 hover:underline" onClick={() => handleRemoveFriend(friend.id)}>
                         Remove
                       </button>
                     </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="p-4">
+            <p className="text-sm font-semibold text-gray-900 mb-2">Groups</p>
+            {groupConversations.length === 0 ? (
+              <p className="text-sm text-gray-500">No groups yet.</p>
+            ) : (
+              <div className="space-y-2">
+                {groupConversations.map((conversation) => (
+                  <button
+                    key={conversation.id}
+                    onClick={() => openGroupConversation(conversation)}
+                    className={`w-full text-left rounded-lg border p-3 transition-colors ${
+                      activeConversationId === conversation.id ? 'border-[#0a66c2] bg-blue-50' : 'border-gray-200 hover:bg-gray-50'
+                    }`}
+                  >
+                    <p className="text-sm font-semibold text-gray-900">{conversation.name || `Group #${conversation.id}`}</p>
+                    <p className="text-xs text-gray-500">{(conversation.participant_ids || []).length} participants</p>
                   </button>
                 ))}
               </div>
@@ -348,16 +432,14 @@ const Messages = () => {
         </aside>
 
         <section className="li-card overflow-hidden lg:col-span-8 flex flex-col min-h-[520px]">
-          <div className="px-4 py-3 border-b border-gray-200 bg-white flex items-center justify-between">
-            <div>
-              <p className="text-sm font-semibold text-gray-900">{activeFriend ? activeFriend.full_name : 'Select a friend to chat'}</p>
-              <p className="text-xs text-gray-500">{activeFriend ? activeFriend.headline || activeFriend.role : 'Only connected friends can be messaged'}</p>
-            </div>
+          <div className="px-4 py-3 border-b border-gray-200 bg-white">
+            <p className="text-sm font-semibold text-gray-900">{activeConversationTitle || 'Select a friend or group to chat'}</p>
+            <p className="text-xs text-gray-500">{activeConversationSubtitle || 'Only connected friends can be messaged'}</p>
           </div>
 
           <div className="flex-1 p-4 bg-[#f7f9fb] overflow-y-auto space-y-3">
             {!activeConversationId ? (
-              <div className="text-sm text-gray-500">Choose a connection from the left panel to start chatting.</div>
+              <div className="text-sm text-gray-500">Choose a connection or group from the left panel to start chatting.</div>
             ) : loadingMessages ? (
               <div className="text-sm text-gray-500">Loading messages...</div>
             ) : messages.length === 0 ? (
@@ -380,7 +462,7 @@ const Messages = () => {
             <textarea
               className="li-input"
               rows={2}
-              placeholder={activeConversationId ? 'Write a message...' : 'Select a friend to start chatting'}
+              placeholder={activeConversationId ? 'Write a message...' : 'Select a friend or group to start chatting'}
               value={messageInput}
               onChange={(event) => setMessageInput(event.target.value)}
               disabled={!activeConversationId || sending}
