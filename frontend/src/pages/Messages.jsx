@@ -1,9 +1,12 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { connectionAPI, messageAPI } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 
 const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder();
+
+const DEVICE_PUBLIC_KEY_STORAGE = 'cb_device_public_key_spki';
+const DEVICE_PRIVATE_KEY_STORAGE = 'cb_device_private_key_pkcs8';
 
 const bytesToBase64 = (bytes) => {
   const binary = Array.from(bytes, (byte) => String.fromCharCode(byte)).join('');
@@ -15,71 +18,75 @@ const base64ToBytes = (value) => {
   return Uint8Array.from(binary, (char) => char.charCodeAt(0));
 };
 
-const getConversationStorageKey = (conversationId) => `cb_e2ee_secret_${conversationId}`;
+const utf8ToBase64 = (value) => {
+  try {
+    return btoa(unescape(encodeURIComponent(value)));
+  } catch {
+    return value;
+  }
+};
 
-const deriveAesKey = async (secret, conversationId) => {
-  const secretMaterial = await crypto.subtle.importKey(
-    'raw',
-    textEncoder.encode(secret),
-    'PBKDF2',
-    false,
-    ['deriveKey']
-  );
+const base64ToUtf8 = (value) => {
+  try {
+    return decodeURIComponent(escape(atob(value)));
+  } catch {
+    return value;
+  }
+};
 
-  return crypto.subtle.deriveKey(
+const generateDeviceKeyPair = async () =>
+  crypto.subtle.generateKey(
     {
-      name: 'PBKDF2',
-      salt: textEncoder.encode(`careerbridge-e2ee-${conversationId}`),
-      iterations: 200000,
+      name: 'RSA-OAEP',
+      modulusLength: 2048,
+      publicExponent: new Uint8Array([1, 0, 1]),
       hash: 'SHA-256',
     },
-    secretMaterial,
-    { name: 'AES-GCM', length: 256 },
-    false,
+    true,
     ['encrypt', 'decrypt']
   );
-};
 
-const encryptE2EE = async (plaintext, secret, conversationId) => {
-  const key = await deriveAesKey(secret, conversationId);
+const importPrivateKey = async (privateKeyBase64) =>
+  crypto.subtle.importKey('pkcs8', base64ToBytes(privateKeyBase64), { name: 'RSA-OAEP', hash: 'SHA-256' }, false, ['decrypt']);
+
+const importPublicKey = async (publicKeyBase64) =>
+  crypto.subtle.importKey('spki', base64ToBytes(publicKeyBase64), { name: 'RSA-OAEP', hash: 'SHA-256' }, false, ['encrypt']);
+
+const generateConversationKey = async () => crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, true, ['encrypt', 'decrypt']);
+
+const importConversationKey = async (rawBytes) =>
+  crypto.subtle.importKey('raw', rawBytes, { name: 'AES-GCM' }, false, ['encrypt', 'decrypt']);
+
+const encryptWithConversationKey = async (plaintext, key) => {
   const iv = crypto.getRandomValues(new Uint8Array(12));
-
-  const encrypted = await crypto.subtle.encrypt(
-    { name: 'AES-GCM', iv },
-    key,
-    textEncoder.encode(plaintext)
-  );
-
-  return JSON.stringify({
-    v: 1,
-    alg: 'AES-GCM',
-    iv: bytesToBase64(iv),
-    ct: bytesToBase64(new Uint8Array(encrypted)),
-  });
+  const encrypted = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, textEncoder.encode(plaintext));
+  return JSON.stringify({ v: 2, alg: 'AES-GCM', iv: bytesToBase64(iv), ct: bytesToBase64(new Uint8Array(encrypted)) });
 };
 
-const decryptE2EE = async (ciphertext, secret, conversationId) => {
+const decryptWithConversationKey = async (ciphertext, key) => {
+  if (!ciphertext) {
+    return '';
+  }
+
   try {
     const parsed = JSON.parse(ciphertext);
-    if (!parsed?.iv || !parsed?.ct || parsed?.alg !== 'AES-GCM') {
-      throw new Error('Invalid ciphertext format');
+    if (parsed?.alg === 'AES-GCM' && parsed?.v === 2 && parsed?.iv && parsed?.ct) {
+      const decrypted = await crypto.subtle.decrypt(
+        { name: 'AES-GCM', iv: base64ToBytes(parsed.iv) },
+        key,
+        base64ToBytes(parsed.ct)
+      );
+      return textDecoder.decode(decrypted);
     }
 
-    const key = await deriveAesKey(secret, conversationId);
-    const decrypted = await crypto.subtle.decrypt(
-      { name: 'AES-GCM', iv: base64ToBytes(parsed.iv) },
-      key,
-      base64ToBytes(parsed.ct)
-    );
-
-    return textDecoder.decode(decrypted);
+    if (parsed?.alg === 'AES-GCM') {
+      return '[message encrypted with legacy secret]';
+    }
   } catch {
-    try {
-      return decodeURIComponent(escape(atob(ciphertext)));
-    } catch {
-      throw new Error('Unable to decrypt message');
-    }
+    return base64ToUtf8(ciphertext);
   }
+
+  return base64ToUtf8(ciphertext);
 };
 
 const getApiErrorMessage = (error, fallbackMessage) => {
@@ -135,19 +142,21 @@ const Messages = () => {
   const [activeConversationTitle, setActiveConversationTitle] = useState('');
   const [activeConversationSubtitle, setActiveConversationSubtitle] = useState('');
   const [messageInput, setMessageInput] = useState('');
-  const [conversationSecretInput, setConversationSecretInput] = useState('');
-  const [activeConversationSecret, setActiveConversationSecret] = useState('');
 
   const [groupName, setGroupName] = useState('');
   const [groupMemberIds, setGroupMemberIds] = useState([]);
 
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [sending, setSending] = useState(false);
-  const [unlocking, setUnlocking] = useState(false);
+  const [encryptionReady, setEncryptionReady] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
+  const privateKeyRef = useRef(null);
+  const conversationKeyCacheRef = useRef(new Map());
+
   useEffect(() => {
+    initializeEncryption();
     loadSidebarData();
     loadConversations();
   }, []);
@@ -190,6 +199,34 @@ const Messages = () => {
     () => (conversations || []).filter((conversation) => conversation.is_group),
     [conversations]
   );
+
+  const getActiveConversation = () => conversations.find((item) => item.id === activeConversationId) || null;
+
+  const initializeEncryption = async () => {
+    try {
+      let storedPublic = localStorage.getItem(DEVICE_PUBLIC_KEY_STORAGE);
+      let storedPrivate = localStorage.getItem(DEVICE_PRIVATE_KEY_STORAGE);
+
+      if (!storedPublic || !storedPrivate) {
+        const keyPair = await generateDeviceKeyPair();
+        const exportedPublic = new Uint8Array(await crypto.subtle.exportKey('spki', keyPair.publicKey));
+        const exportedPrivate = new Uint8Array(await crypto.subtle.exportKey('pkcs8', keyPair.privateKey));
+
+        storedPublic = bytesToBase64(exportedPublic);
+        storedPrivate = bytesToBase64(exportedPrivate);
+
+        localStorage.setItem(DEVICE_PUBLIC_KEY_STORAGE, storedPublic);
+        localStorage.setItem(DEVICE_PRIVATE_KEY_STORAGE, storedPrivate);
+      }
+
+      privateKeyRef.current = await importPrivateKey(storedPrivate);
+      await messageAPI.upsertMyPublicKey(storedPublic);
+      setEncryptionReady(true);
+    } catch (err) {
+      setEncryptionReady(false);
+      setError(getApiErrorMessage(err, 'Failed to initialize end-to-end encryption'));
+    }
+  };
 
   const loadSidebarData = async () => {
     try {
@@ -238,36 +275,74 @@ const Messages = () => {
     }
   };
 
-  const useConversationSecret = async (conversationId, secret) => {
-    if (!secret?.trim()) {
-      setActiveConversationSecret('');
-      sessionStorage.removeItem(getConversationStorageKey(conversationId));
-      return;
+  const initializeConversationKeyForParticipants = async (conversation) => {
+    const participantIds = [...new Set(conversation.participant_ids || [])];
+    if (!participantIds.length) {
+      throw new Error('Conversation has no participants');
     }
 
-    setUnlocking(true);
+    const conversationKey = await generateConversationKey();
+    const rawKey = new Uint8Array(await crypto.subtle.exportKey('raw', conversationKey));
+
+    const publicKeyResponse = await messageAPI.getUsersPublicKeys(participantIds);
+    const availableKeys = (publicKeyResponse.data || []).reduce((acc, item) => {
+      acc[item.user_id] = item.public_key;
+      return acc;
+    }, {});
+
+    const missingUserIds = participantIds.filter((participantId) => !availableKeys[participantId]);
+    if (missingUserIds.length > 0) {
+      throw new Error('Some participants are not ready for encrypted messaging yet. Ask them to open Messaging once.');
+    }
+
+    const envelopes = await Promise.all(
+      participantIds.map(async (participantId) => {
+        const publicKey = await importPublicKey(availableKeys[participantId]);
+        const encryptedKey = await crypto.subtle.encrypt({ name: 'RSA-OAEP' }, publicKey, rawKey);
+        return {
+          user_id: participantId,
+          encrypted_key: bytesToBase64(new Uint8Array(encryptedKey)),
+        };
+      })
+    );
+
+    await messageAPI.upsertConversationKeys(conversation.id, envelopes);
+    conversationKeyCacheRef.current.set(conversation.id, conversationKey);
+    return conversationKey;
+  };
+
+  const getConversationKey = async (conversation) => {
+    if (!conversation?.id) {
+      throw new Error('Conversation not selected');
+    }
+
+    const cached = conversationKeyCacheRef.current.get(conversation.id);
+    if (cached) {
+      return cached;
+    }
+
+    if (!privateKeyRef.current) {
+      throw new Error('Encryption keys are not initialized yet');
+    }
+
     try {
-      const response = await messageAPI.listMessages(conversationId);
-      const remoteMessages = response.data || [];
-
-      for (const message of remoteMessages) {
-        if (!message?.ciphertext) {
-          continue;
-        }
-        await decryptE2EE(message.ciphertext, secret.trim(), conversationId);
+      const response = await messageAPI.getMyConversationKey(conversation.id);
+      const wrappedKey = base64ToBytes(response.data.encrypted_key);
+      const rawKey = await crypto.subtle.decrypt({ name: 'RSA-OAEP' }, privateKeyRef.current, wrappedKey);
+      const conversationKey = await importConversationKey(rawKey);
+      conversationKeyCacheRef.current.set(conversation.id, conversationKey);
+      return conversationKey;
+    } catch (err) {
+      if (err?.response?.status === 404) {
+        return initializeConversationKeyForParticipants(conversation);
       }
-
-      sessionStorage.setItem(getConversationStorageKey(conversationId), secret.trim());
-      setActiveConversationSecret(secret.trim());
-      setConversationSecretInput(secret.trim());
-      setMessages(remoteMessages);
-      setSuccess('Conversation unlocked');
-      setError('');
-    } catch {
-      setError('Invalid E2EE secret for this conversation');
-    } finally {
-      setUnlocking(false);
+      throw err;
     }
+  };
+
+  const prepareConversation = async (conversation) => {
+    await getConversationKey(conversation);
+    await loadMessages(conversation.id);
   };
 
   const handleSendRequest = async (recipientId) => {
@@ -350,12 +425,10 @@ const Messages = () => {
       setActiveConversationId(conversation.id);
       setActiveConversationTitle(friendMap[friendId]?.full_name || `User #${friendId}`);
       setActiveConversationSubtitle(friendMap[friendId]?.headline || friendMap[friendId]?.role || 'Connected friend');
-      const savedSecret = sessionStorage.getItem(getConversationStorageKey(conversation.id)) || '';
-      setConversationSecretInput(savedSecret);
-      setActiveConversationSecret(savedSecret);
-      await loadMessages(conversation.id);
+      await prepareConversation(conversation);
     } catch (err) {
-      setError(getApiErrorMessage(err, 'Unable to open chat. Ensure you are connected first.'));
+      setError(getApiErrorMessage(err, err?.message || 'Unable to open encrypted chat'));
+      setMessages([]);
     }
   };
 
@@ -367,12 +440,10 @@ const Messages = () => {
       setActiveConversationId(conversation.id);
       setActiveConversationTitle(conversation.name || `Group #${conversation.id}`);
       setActiveConversationSubtitle(`${(conversation.participant_ids || []).length} participants`);
-      const savedSecret = sessionStorage.getItem(getConversationStorageKey(conversation.id)) || '';
-      setConversationSecretInput(savedSecret);
-      setActiveConversationSecret(savedSecret);
-      await loadMessages(conversation.id);
+      await prepareConversation(conversation);
     } catch (err) {
-      setError(getApiErrorMessage(err, 'Failed to open group conversation'));
+      setError(getApiErrorMessage(err, err?.message || 'Failed to open encrypted group conversation'));
+      setMessages([]);
     }
   };
 
@@ -413,15 +484,18 @@ const Messages = () => {
       return;
     }
 
-    if (!activeConversationSecret) {
-      setError('Set and unlock E2EE secret before sending messages');
-      return;
-    }
-
     try {
+      const activeConversation = getActiveConversation();
+      if (!activeConversation) {
+        setError('Conversation not available. Please reopen the chat.');
+        return;
+      }
+
       setSending(true);
       setError('');
-      const encryptedPayload = await encryptE2EE(messageInput.trim(), activeConversationSecret, activeConversationId);
+      const conversationKey = await getConversationKey(activeConversation);
+      const encryptedPayload = await encryptWithConversationKey(messageInput.trim(), conversationKey);
+
       await messageAPI.sendMessage(activeConversationId, {
         ciphertext: encryptedPayload,
         message_type: 'e2ee',
@@ -429,10 +503,21 @@ const Messages = () => {
       setMessageInput('');
       await loadMessages(activeConversationId);
     } catch (err) {
-      setError(getApiErrorMessage(err, 'Failed to send message'));
+      setError(getApiErrorMessage(err, err?.message || 'Failed to send encrypted message'));
     } finally {
       setSending(false);
     }
+  };
+
+  const buildMessagePromise = (message) => {
+    const activeConversation = getActiveConversation();
+    if (!activeConversation) {
+      return Promise.resolve('[unable to decrypt]');
+    }
+
+    return getConversationKey(activeConversation)
+      .then((conversationKey) => decryptWithConversationKey(message.ciphertext, conversationKey))
+      .catch(() => '[unable to decrypt]');
   };
 
   return (
@@ -572,24 +657,6 @@ const Messages = () => {
           <div className="px-4 py-3 border-b border-gray-200 bg-white">
             <p className="text-sm font-semibold text-gray-900">{activeConversationTitle || 'Select a friend or group to chat'}</p>
             <p className="text-xs text-gray-500">{activeConversationSubtitle || 'Only connected friends can be messaged'}</p>
-            {activeConversationId && (
-              <div className="mt-2 flex flex-col sm:flex-row gap-2">
-                <input
-                  className="li-input"
-                  placeholder="E2EE secret (shared with participants)"
-                  value={conversationSecretInput}
-                  onChange={(event) => setConversationSecretInput(event.target.value)}
-                />
-                <button
-                  type="button"
-                  className="li-btn-secondary whitespace-nowrap"
-                  onClick={() => useConversationSecret(activeConversationId, conversationSecretInput)}
-                  disabled={unlocking}
-                >
-                  {unlocking ? 'Unlocking...' : 'Unlock Chat'}
-                </button>
-              </div>
-            )}
           </div>
 
           <div className="flex-1 p-4 bg-[#f7f9fb] overflow-y-auto space-y-3">
@@ -602,9 +669,7 @@ const Messages = () => {
             ) : (
               messages.map((message) => {
                 const isMine = message.sender_id === user?.id;
-                const decryptedTextPromise = activeConversationSecret
-                  ? decryptE2EE(message.ciphertext, activeConversationSecret, activeConversationId)
-                  : Promise.resolve('[locked]');
+                const decryptedTextPromise = buildMessagePromise(message);
                 return (
                   <div key={message.id} className={`flex ${isMine ? 'justify-end' : 'justify-start'}`}>
                     <div className={`max-w-[80%] rounded-2xl px-3 py-2 text-sm shadow-sm ${isMine ? 'bg-[#0a66c2] text-white' : 'bg-white text-gray-800 border border-gray-200'}`}>
@@ -623,9 +688,13 @@ const Messages = () => {
               placeholder={activeConversationId ? 'Write a message...' : 'Select a friend or group to start chatting'}
               value={messageInput}
               onChange={(event) => setMessageInput(event.target.value)}
-              disabled={!activeConversationId || sending}
+              disabled={!activeConversationId || sending || !encryptionReady}
             />
-            <button type="submit" className="li-btn-primary whitespace-nowrap" disabled={!activeConversationId || sending || !messageInput.trim() || !activeConversationSecret}>
+            <button
+              type="submit"
+              className="li-btn-primary whitespace-nowrap"
+              disabled={!activeConversationId || sending || !messageInput.trim() || !encryptionReady}
+            >
               {sending ? 'Sending...' : 'Send'}
             </button>
           </form>

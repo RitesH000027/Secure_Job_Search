@@ -1,9 +1,28 @@
+import { useEffect, useState } from 'react';
 import { Outlet, Link, NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { connectionAPI } from '../services/api';
 
 const Layout = () => {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const [connectionsCount, setConnectionsCount] = useState(0);
+
+  useEffect(() => {
+    const loadConnectionsCount = async () => {
+      try {
+        const response = await connectionAPI.listFriends();
+        const friends = Array.isArray(response.data) ? response.data : [];
+        setConnectionsCount(friends.length);
+      } catch {
+        setConnectionsCount(0);
+      }
+    };
+
+    if (user) {
+      loadConnectionsCount();
+    }
+  }, [user]);
 
   const handleLogout = () => {
     logout();
@@ -80,8 +99,7 @@ const Layout = () => {
             <h2 className="mt-2 text-base font-semibold text-gray-900">{user?.full_name}</h2>
             <p className="text-sm text-gray-500 capitalize">{user?.role}</p>
             <div className="mt-3 border-t border-gray-100 pt-3 text-sm text-gray-600 space-y-1">
-              <p>Profile views: 12</p>
-              <p>Connections: 24</p>
+              <p>Connections: {connectionsCount}</p>
             </div>
           </div>
 

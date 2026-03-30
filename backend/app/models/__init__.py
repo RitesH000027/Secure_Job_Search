@@ -16,6 +16,8 @@ from app.models.networking import (
 	Message,
 	AuditLog,
 	ConnectionRequest,
+	UserEncryptionKey,
+	ConversationKeyEnvelope,
 )
 
 __all__ = [
@@ -38,4 +40,6 @@ __all__ = [
 	"Message",
 	"AuditLog",
 	"ConnectionRequest",
+	"UserEncryptionKey",
+	"ConversationKeyEnvelope",
 ]

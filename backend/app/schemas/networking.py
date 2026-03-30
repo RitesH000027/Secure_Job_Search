@@ -174,3 +174,34 @@ class ConnectionRequestResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class UserEncryptionKeyUpsert(BaseModel):
+    public_key: str = Field(..., min_length=1)
+
+
+class UserEncryptionKeyResponse(BaseModel):
+    user_id: int
+    public_key: str
+    updated_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class ConversationKeyEnvelopeCreate(BaseModel):
+    user_id: int
+    encrypted_key: str = Field(..., min_length=1)
+
+
+class ConversationKeyEnvelopeBatchCreate(BaseModel):
+    envelopes: list[ConversationKeyEnvelopeCreate]
+
+
+class ConversationKeyEnvelopeResponse(BaseModel):
+    conversation_id: int
+    user_id: int
+    encrypted_key: str
+
+    class Config:
+        from_attributes = True

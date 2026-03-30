@@ -3,7 +3,7 @@ Models for companies, jobs, applications, messaging, and audit logs
 """
 from datetime import datetime
 import enum
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Boolean, Text, Enum
+from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Boolean, Text, Enum, UniqueConstraint
 from sqlalchemy.orm import relationship
 from app.database import Base
 
@@ -183,5 +183,29 @@ class ConnectionRequest(Base):
         nullable=False,
         default=ConnectionRequestStatus.PENDING,
     )
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class UserEncryptionKey(Base):
+    __tablename__ = "user_encryption_keys"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, unique=True, index=True)
+    public_key = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class ConversationKeyEnvelope(Base):
+    __tablename__ = "conversation_key_envelopes"
+    __table_args__ = (
+        UniqueConstraint("conversation_id", "user_id", name="uq_conversation_key_envelope"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    conversation_id = Column(Integer, ForeignKey("conversations.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    encrypted_key = Column(Text, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

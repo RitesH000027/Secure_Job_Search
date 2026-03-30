@@ -124,6 +124,11 @@ export const messageAPI = {
   listConversations: () => api.get('/messages/conversations'),
   sendMessage: (conversationId, data) => api.post(`/messages/conversations/${conversationId}/messages`, data),
   listMessages: (conversationId) => api.get(`/messages/conversations/${conversationId}/messages`),
+  upsertMyPublicKey: (publicKey) => api.put('/messages/keys/me', { public_key: publicKey }),
+  getUsersPublicKeys: (userIds) => api.get('/messages/keys/users', { params: { user_ids: userIds.join(',') } }),
+  upsertConversationKeys: (conversationId, envelopes) =>
+    api.post(`/messages/conversations/${conversationId}/keys`, { envelopes }),
+  getMyConversationKey: (conversationId) => api.get(`/messages/conversations/${conversationId}/keys/me`),
 };
 
 export const connectionAPI = {

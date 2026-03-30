@@ -1,18 +1,32 @@
 """
 Encrypted messaging endpoints for one-to-one and group chats.
 """
+from datetime import datetime
+from typing import cast
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app.dependencies import get_current_verified_user
 from app.models.user import User
-from app.models.networking import Conversation, ConversationParticipant, Message, ConnectionRequest, ConnectionRequestStatus
+from app.models.networking import (
+    Conversation,
+    ConversationParticipant,
+    Message,
+    ConnectionRequest,
+    ConnectionRequestStatus,
+    UserEncryptionKey,
+    ConversationKeyEnvelope,
+)
 from app.schemas.networking import (
     ConversationCreate,
     ConversationResponse,
     MessageCreate,
     MessageResponse,
+    UserEncryptionKeyUpsert,
+    UserEncryptionKeyResponse,
+    ConversationKeyEnvelopeBatchCreate,
+    ConversationKeyEnvelopeResponse,
 )
 from app.utils.audit import log_audit_event
 
@@ -53,21 +67,22 @@ async def create_conversation(
     current_user: User = Depends(get_current_verified_user),
     db: Session = Depends(get_db),
 ):
+    current_user_id = int(cast(int, current_user.id))
     participant_ids = set(payload.participant_ids)
-    participant_ids.add(current_user.id)
+    participant_ids.add(current_user_id)
 
     if not payload.is_group and len(participant_ids) != 2:
         raise HTTPException(status_code=400, detail="One-to-one chat must have exactly two participants")
 
     if not payload.is_group:
-        other_user_id = next(user_id for user_id in participant_ids if user_id != current_user.id)
-        if not _is_connected_friend(db, current_user.id, other_user_id):
+        other_user_id = next(user_id for user_id in participant_ids if user_id != current_user_id)
+        if not _is_connected_friend(db, current_user_id, other_user_id):
             raise HTTPException(status_code=403, detail="You can only message connected friends")
 
     conversation = Conversation(
         name=payload.name,
         is_group=payload.is_group,
-        created_by=current_user.id,
+        created_by=current_user_id,
     )
     db.add(conversation)
     db.flush()
@@ -79,7 +94,7 @@ async def create_conversation(
         db,
         action="conversation_created",
         target_type="conversation",
-        actor_user_id=current_user.id,
+        actor_user_id=current_user_id,
         target_id=str(conversation.id),
         details={"is_group": payload.is_group, "participant_count": len(participant_ids)},
     )
@@ -87,11 +102,11 @@ async def create_conversation(
     db.commit()
 
     return ConversationResponse(
-        id=conversation.id,
-        name=conversation.name,
-        is_group=conversation.is_group,
-        created_by=conversation.created_by,
-        created_at=conversation.created_at,
+        id=int(cast(int, conversation.id)),
+        name=cast(str | None, conversation.name),
+        is_group=bool(cast(bool, conversation.is_group)),
+        created_by=cast(int | None, conversation.created_by),
+        created_at=cast(datetime, conversation.created_at),
         participant_ids=list(participant_ids),
     )
 
@@ -127,12 +142,12 @@ async def list_my_conversations(
         )
         response.append(
             ConversationResponse(
-                id=conversation.id,
-                name=conversation.name,
-                is_group=conversation.is_group,
-                created_by=conversation.created_by,
-                created_at=conversation.created_at,
-                participant_ids=[m.user_id for m in members],
+                id=int(cast(int, conversation.id)),
+                name=cast(str | None, conversation.name),
+                is_group=bool(cast(bool, conversation.is_group)),
+                created_by=cast(int | None, conversation.created_by),
+                created_at=cast(datetime, conversation.created_at),
+                participant_ids=[int(cast(int, m.user_id)) for m in members],
             )
         )
 
@@ -146,16 +161,17 @@ async def send_message(
     current_user: User = Depends(get_current_verified_user),
     db: Session = Depends(get_db),
 ):
+    current_user_id = int(cast(int, current_user.id))
     conversation = db.query(Conversation).filter(Conversation.id == conversation_id).first()
     if not conversation:
         raise HTTPException(status_code=404, detail="Conversation not found")
 
-    if not _is_participant(db, conversation_id, current_user.id):
+    if not _is_participant(db, conversation_id, current_user_id):
         raise HTTPException(status_code=403, detail="Not a participant in this conversation")
 
     message = Message(
         conversation_id=conversation_id,
-        sender_id=current_user.id,
+        sender_id=current_user_id,
         ciphertext=payload.ciphertext,
         message_type=payload.message_type,
     )
@@ -165,7 +181,7 @@ async def send_message(
         db,
         action="message_sent",
         target_type="conversation",
-        actor_user_id=current_user.id,
+        actor_user_id=current_user_id,
         target_id=str(conversation_id),
         details={"message_type": payload.message_type.value},
     )
@@ -181,11 +197,12 @@ async def list_messages(
     current_user: User = Depends(get_current_verified_user),
     db: Session = Depends(get_db),
 ):
+    current_user_id = int(cast(int, current_user.id))
     conversation = db.query(Conversation).filter(Conversation.id == conversation_id).first()
     if not conversation:
         raise HTTPException(status_code=404, detail="Conversation not found")
 
-    if not _is_participant(db, conversation_id, current_user.id):
+    if not _is_participant(db, conversation_id, current_user_id):
         raise HTTPException(status_code=403, detail="Not a participant in this conversation")
 
     return (
@@ -193,4 +210,132 @@ async def list_messages(
         .filter(Message.conversation_id == conversation_id)
         .order_by(Message.created_at.asc())
         .all()
+    )
+
+
+@router.put("/keys/me", response_model=UserEncryptionKeyResponse)
+async def upsert_my_public_key(
+    payload: UserEncryptionKeyUpsert,
+    current_user: User = Depends(get_current_verified_user),
+    db: Session = Depends(get_db),
+):
+    current_user_id = int(cast(int, current_user.id))
+    row = db.query(UserEncryptionKey).filter(UserEncryptionKey.user_id == current_user_id).first()
+    if row:
+        setattr(row, "public_key", payload.public_key)
+    else:
+        row = UserEncryptionKey(user_id=current_user_id, public_key=payload.public_key)
+        db.add(row)
+
+    db.commit()
+    db.refresh(row)
+    return UserEncryptionKeyResponse(
+        user_id=int(cast(int, row.user_id)),
+        public_key=str(cast(str, row.public_key)),
+        updated_at=cast(datetime | None, row.updated_at),
+    )
+
+
+@router.get("/keys/users", response_model=list[UserEncryptionKeyResponse])
+async def get_users_public_keys(
+    user_ids: str,
+    current_user: User = Depends(get_current_verified_user),
+    db: Session = Depends(get_db),
+):
+    try:
+        requested_ids = {int(item.strip()) for item in user_ids.split(",") if item.strip()}
+    except ValueError:
+        raise HTTPException(status_code=400, detail="user_ids must be a comma-separated list of integers")
+
+    if not requested_ids:
+        return []
+
+    keys = db.query(UserEncryptionKey).filter(UserEncryptionKey.user_id.in_(requested_ids)).all()
+    return [
+        UserEncryptionKeyResponse(
+            user_id=int(cast(int, item.user_id)),
+            public_key=str(cast(str, item.public_key)),
+            updated_at=cast(datetime | None, item.updated_at),
+        )
+        for item in keys
+    ]
+
+
+@router.post("/conversations/{conversation_id}/keys", status_code=status.HTTP_204_NO_CONTENT)
+async def upsert_conversation_key_envelopes(
+    conversation_id: int,
+    payload: ConversationKeyEnvelopeBatchCreate,
+    current_user: User = Depends(get_current_verified_user),
+    db: Session = Depends(get_db),
+):
+    current_user_id = int(cast(int, current_user.id))
+    conversation = db.query(Conversation).filter(Conversation.id == conversation_id).first()
+    if not conversation:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+
+    if not _is_participant(db, conversation_id, current_user_id):
+        raise HTTPException(status_code=403, detail="Not a participant in this conversation")
+
+    participant_rows = (
+        db.query(ConversationParticipant)
+        .filter(ConversationParticipant.conversation_id == conversation_id)
+        .all()
+    )
+    participant_ids = {row.user_id for row in participant_rows}
+
+    for envelope in payload.envelopes:
+        if envelope.user_id not in participant_ids:
+            raise HTTPException(status_code=400, detail=f"User {envelope.user_id} is not a participant")
+
+        existing = (
+            db.query(ConversationKeyEnvelope)
+            .filter(
+                ConversationKeyEnvelope.conversation_id == conversation_id,
+                ConversationKeyEnvelope.user_id == envelope.user_id,
+            )
+            .first()
+        )
+        if existing:
+            setattr(existing, "encrypted_key", envelope.encrypted_key)
+        else:
+            db.add(
+                ConversationKeyEnvelope(
+                    conversation_id=conversation_id,
+                    user_id=envelope.user_id,
+                    encrypted_key=envelope.encrypted_key,
+                )
+            )
+
+    db.commit()
+
+
+@router.get("/conversations/{conversation_id}/keys/me", response_model=ConversationKeyEnvelopeResponse)
+async def get_my_conversation_key_envelope(
+    conversation_id: int,
+    current_user: User = Depends(get_current_verified_user),
+    db: Session = Depends(get_db),
+):
+    current_user_id = int(cast(int, current_user.id))
+    conversation = db.query(Conversation).filter(Conversation.id == conversation_id).first()
+    if not conversation:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+
+    if not _is_participant(db, conversation_id, current_user_id):
+        raise HTTPException(status_code=403, detail="Not a participant in this conversation")
+
+    envelope = (
+        db.query(ConversationKeyEnvelope)
+        .filter(
+            ConversationKeyEnvelope.conversation_id == conversation_id,
+            ConversationKeyEnvelope.user_id == current_user_id,
+        )
+        .first()
+    )
+    if not envelope:
+        raise HTTPException(status_code=404, detail="Conversation key not initialized")
+
+    return ConversationKeyEnvelopeResponse(
+        conversation_id=int(cast(int, envelope.conversation_id)),
+        user_id=int(cast(int, envelope.user_id)),
+        encrypted_key=str(cast(str, envelope.encrypted_key)),
     )
