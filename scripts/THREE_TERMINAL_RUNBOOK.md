@@ -20,6 +20,8 @@ Then run:
 
 bash ~/projects/FCS/scripts/start_backend_server.sh
 
+This script now runs `git pull --ff-only` before starting `uvicorn`, so server code stays in sync with your latest pushed changes.
+
 If that file is not on server yet, run manually:
 
 cd ~/projects/FCS/backend

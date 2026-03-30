@@ -51,35 +51,9 @@ api.interceptors.response.use(
   }
 );
 
-// Auth APIs
-const hasFieldRequiredError = (detail, fieldName) => {
-  if (!Array.isArray(detail)) {
-    return false;
-  }
-
-  return detail.some((item) => Array.isArray(item?.loc) && item.loc.includes(fieldName));
-};
-
 export const authAPI = {
   register: (data) => api.post('/auth/register', data),
-  verifyOTP: async (data) => {
-    try {
-      return await api.post('/auth/verify-otp', data);
-    } catch (error) {
-      const detail = error?.response?.data?.detail;
-
-      if (error?.response?.status === 422 && hasFieldRequiredError(detail, 'otp')) {
-        const legacyPayload = {
-          email: data.email,
-          otp: data.email_otp || data.mobile_otp,
-        };
-
-        return api.post('/auth/verify-otp', legacyPayload);
-      }
-
-      throw error;
-    }
-  },
+  verifyOTP: (data) => api.post('/auth/verify-otp', data),
   resendOTP: (data) => api.post('/auth/resend-otp', data),
   login: (data) => api.post('/auth/login', data),
   getCurrentUser: () => api.get('/auth/me'),

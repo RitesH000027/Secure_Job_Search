@@ -33,9 +33,9 @@ const Register = () => {
     mobile_number: '',
     password: '',
     full_name: '',
+    role: 'user',
   });
-  const [emailOtp, setEmailOtp] = useState('');
-  const [mobileOtp, setMobileOtp] = useState('');
+  const [otp, setOtp] = useState('');
   const [step, setStep] = useState('register');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -93,12 +93,11 @@ const Register = () => {
     setError('');
     setLoading(true);
 
-    const normalizedEmailOtp = emailOtp.replace(/\D/g, '').slice(0, 6);
-    const normalizedMobileOtp = mobileOtp.replace(/\D/g, '').slice(0, 6);
+    const normalizedOtp = otp.replace(/\D/g, '').slice(0, 6);
 
-    if (normalizedEmailOtp.length !== 6 || normalizedMobileOtp.length !== 6) {
+    if (normalizedOtp.length !== 6) {
       setLoading(false);
-      setError('Enter valid 6-digit Email OTP and 6-digit Mobile OTP.');
+      setError('Enter a valid 6-digit OTP.');
       return;
     }
 
@@ -123,8 +122,7 @@ const Register = () => {
       const response = await authAPI.verifyOTP({
         email: resolvedEmail,
         mobile_number: resolvedMobileNumber,
-        email_otp: normalizedEmailOtp,
-        mobile_otp: normalizedMobileOtp,
+        otp: normalizedOtp,
       });
 
       localStorage.setItem('access_token', response.data.access_token);
@@ -165,7 +163,7 @@ const Register = () => {
         mobile_number: resolvedMobileNumber,
       });
     } catch (err) {
-      setError(getApiErrorMessage(err, 'Failed to resend OTP codes.'));
+      setError(getApiErrorMessage(err, 'Failed to resend OTP.'));
     } finally {
       setLoading(false);
     }
@@ -179,7 +177,7 @@ const Register = () => {
           {step === 'register' ? 'Join your professional network' : 'Verify your account'}
         </h1>
         <p className="text-sm text-gray-500 mt-1">
-          {step === 'register' ? 'Build your profile and start connecting.' : 'Enter OTP codes sent to your email and mobile.'}
+          {step === 'register' ? 'Build your profile and start connecting.' : 'Enter the OTP sent to your email and mobile.'}
         </p>
 
         {error && <div className="mt-4 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</div>}
@@ -190,6 +188,13 @@ const Register = () => {
             <input className="li-input" name="email" type="email" placeholder="Email" value={formData.email} onChange={handleChange} required />
             <input className="li-input" name="mobile_number" type="tel" placeholder="Mobile number" value={formData.mobile_number} onChange={handleChange} required />
             <input className="li-input" name="password" type="password" placeholder="Password" value={formData.password} onChange={handleChange} required />
+            <div>
+              <label htmlFor="role" className="block text-xs text-gray-500 mb-1">Register as</label>
+              <select id="role" name="role" className="li-input" value={formData.role} onChange={handleChange}>
+                <option value="user">User (Job Seeker)</option>
+                <option value="recruiter">Recruiter</option>
+              </select>
+            </div>
             <p className="text-xs text-gray-500">Password must contain uppercase, lowercase, and a number.</p>
             <button type="submit" className="li-btn-primary w-full !py-2" disabled={loading}>
               {loading ? 'Creating account...' : 'Agree & Join'}
@@ -200,24 +205,16 @@ const Register = () => {
             <input
               className="li-input text-center text-lg sm:text-xl tracking-[0.18em] sm:tracking-[0.3em]"
               maxLength="6"
-              value={emailOtp}
-              onChange={(event) => setEmailOtp(event.target.value.replace(/\D/g, '').slice(0, 6))}
-              placeholder="Email OTP"
-              required
-            />
-            <input
-              className="li-input text-center text-lg sm:text-xl tracking-[0.18em] sm:tracking-[0.3em]"
-              maxLength="6"
-              value={mobileOtp}
-              onChange={(event) => setMobileOtp(event.target.value.replace(/\D/g, '').slice(0, 6))}
-              placeholder="Mobile OTP"
+              value={otp}
+              onChange={(event) => setOtp(event.target.value.replace(/\D/g, '').slice(0, 6))}
+              placeholder="OTP"
               required
             />
             <button type="submit" className="li-btn-primary w-full !py-2" disabled={loading}>
               {loading ? 'Verifying...' : 'Verify & Continue'}
             </button>
             <button type="button" onClick={handleResendOTP} className="li-btn-secondary w-full !py-2" disabled={loading}>
-              Resend OTP Codes
+              Resend OTP
             </button>
           </form>
         )}

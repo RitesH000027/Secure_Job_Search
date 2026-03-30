@@ -3,6 +3,9 @@ set -euo pipefail
 
 cd ~/projects/FCS/backend
 
+echo "Syncing backend repo (fast-forward only)..."
+git pull --ff-only
+
 if [[ ! -d ".venv" ]]; then
   echo "Missing .venv in ~/projects/FCS/backend"
   echo "Create it first: python3 -m venv .venv"

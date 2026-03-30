@@ -159,14 +159,13 @@ async def register(
     db.add(profile)
     db.commit()
     
-    # Generate and send OTPs
-    email_otp, _ = create_otp_token(db, new_user.id, purpose="registration_email")
-    mobile_otp, _ = create_otp_token(db, new_user.id, purpose="registration_mobile")
-    background_tasks.add_task(send_otp_email, new_user.email, email_otp, "registration_email")
-    background_tasks.add_task(send_otp_sms, new_user.mobile_number, mobile_otp, "registration_mobile")
+    # Generate one OTP and send the same code to both email and mobile
+    shared_otp, _ = create_otp_token(db, new_user.id, purpose="registration")
+    background_tasks.add_task(send_otp_email, new_user.email, shared_otp, "registration")
+    background_tasks.add_task(send_otp_sms, new_user.mobile_number, shared_otp, "registration")
     
     return {
-        "message": "Registration successful. Please verify both email and mobile OTP codes.",
+        "message": "Registration successful. Please verify using the OTP sent to both email and mobile.",
         "email": new_user.email,
         "mobile_number": new_user.mobile_number
     }
@@ -204,32 +203,18 @@ async def verify_otp_endpoint(
             detail="Mobile number does not match the registered account"
         )
     
-    # Verify email OTP
-    is_valid_email, email_error = verify_otp(
+    # Verify shared OTP
+    is_valid_otp, otp_error = verify_otp(
         db,
         user.id,
-        otp_data.email_otp,
-        purpose="registration_email"
-    )
-
-    if not is_valid_email:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=email_error
-        )
-
-    # Verify mobile OTP
-    is_valid_mobile, mobile_error = verify_otp(
-        db,
-        user.id,
-        otp_data.mobile_otp,
-        purpose="registration_mobile"
+        otp_data.otp,
+        purpose="registration"
     )
     
-    if not is_valid_mobile:
+    if not is_valid_otp:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=mobile_error
+            detail=otp_error
         )
     
     # Activate user account
@@ -276,13 +261,12 @@ async def resend_otp(
             detail="Mobile number does not match the registered account"
         )
     
-    # Generate and resend new OTPs
-    email_otp, _ = create_otp_token(db, user.id, purpose="registration_email")
-    mobile_otp, _ = create_otp_token(db, user.id, purpose="registration_mobile")
-    background_tasks.add_task(send_otp_email, user.email, email_otp, "registration_email")
-    background_tasks.add_task(send_otp_sms, user.mobile_number, mobile_otp, "registration_mobile")
+    # Generate and resend one shared OTP
+    shared_otp, _ = create_otp_token(db, user.id, purpose="registration")
+    background_tasks.add_task(send_otp_email, user.email, shared_otp, "registration")
+    background_tasks.add_task(send_otp_sms, user.mobile_number, shared_otp, "registration")
     
-    return {"message": "OTPs resent successfully. Please check your email and mobile."}
+    return {"message": "OTP resent successfully. Please check your email and mobile."}
 
 
 @router.post("/login", response_model=Token)

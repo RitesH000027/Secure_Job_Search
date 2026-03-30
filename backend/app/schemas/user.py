@@ -39,8 +39,7 @@ class OTPVerify(BaseModel):
     """Schema for OTP verification"""
     email: EmailStr
     mobile_number: str = Field(..., min_length=10, max_length=20)
-    email_otp: str = Field(..., min_length=6, max_length=6)
-    mobile_otp: str = Field(..., min_length=6, max_length=6)
+    otp: str = Field(..., min_length=6, max_length=6)
 
 
 class OTPResend(BaseModel):
