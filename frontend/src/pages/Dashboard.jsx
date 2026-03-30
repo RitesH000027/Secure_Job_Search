@@ -49,6 +49,14 @@ const Dashboard = () => {
           </Link>
 
           <Link
+            to="/companies"
+            className="border border-gray-200 rounded-xl p-3 sm:p-4 hover:bg-gray-50 hover:border-gray-300 transition-colors"
+          >
+            <h3 className="font-semibold text-gray-900">Companies</h3>
+            <p className="text-sm text-gray-600 mt-1">View all companies and manage your organization profiles.</p>
+          </Link>
+
+          <Link
             to="/messages"
             className="border border-gray-200 rounded-xl p-3 sm:p-4 hover:bg-gray-50 hover:border-gray-300 transition-colors"
           >

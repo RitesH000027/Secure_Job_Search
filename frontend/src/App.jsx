@@ -9,6 +9,8 @@ import ResumeUpload from './pages/ResumeUpload';
 import AdminDashboard from './pages/AdminDashboard';
 import Jobs from './pages/Jobs';
 import Messages from './pages/Messages';
+import Companies from './pages/Companies';
+import CompanyJobs from './pages/CompanyJobs';
 import PrivateRoute from './components/PrivateRoute';
 
 function App() {
@@ -37,6 +39,16 @@ function App() {
           <Route path="/jobs" element={
             <PrivateRoute>
               <Jobs />
+            </PrivateRoute>
+          } />
+          <Route path="/companies" element={
+            <PrivateRoute>
+              <Companies />
+            </PrivateRoute>
+          } />
+          <Route path="/companies/:id/jobs" element={
+            <PrivateRoute>
+              <CompanyJobs />
             </PrivateRoute>
           } />
           <Route path="/messages" element={

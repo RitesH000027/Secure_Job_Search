@@ -12,6 +12,7 @@ const Layout = () => {
 
   const navItems = [
     { to: '/dashboard', label: 'Home' },
+    { to: '/companies', label: 'Companies' },
     { to: '/jobs', label: 'Jobs' },
     { to: '/messages', label: 'Messaging' },
     { to: '/profile', label: 'Profile' },

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { companyAPI, jobsAPI } from '../services/api';
+import { Link } from 'react-router-dom';
+import { companyAPI, jobsAPI, resumeAPI } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 
 const defaultJobForm = {
@@ -15,6 +16,20 @@ const defaultJobForm = {
   application_deadline: '',
 };
 
+const APPLICATION_FLOW = ['Applied', 'Reviewed', 'Interviewed'];
+
+const getApplicationTimeline = (status) => {
+  if (status === 'Offer') {
+    return [...APPLICATION_FLOW, 'Offer'];
+  }
+
+  if (status === 'Rejected') {
+    return [...APPLICATION_FLOW, 'Rejected'];
+  }
+
+  return APPLICATION_FLOW;
+};
+
 const Jobs = () => {
   const { user } = useAuth();
   const isRecruiter = useMemo(() => user?.role === 'recruiter' || user?.role === 'admin', [user]);
@@ -22,13 +37,24 @@ const Jobs = () => {
   const [jobs, setJobs] = useState([]);
   const [myApplications, setMyApplications] = useState([]);
   const [companies, setCompanies] = useState([]);
+  const [companyDirectory, setCompanyDirectory] = useState({});
+  const [resumes, setResumes] = useState([]);
   const [selectedJobId, setSelectedJobId] = useState('');
   const [applicants, setApplicants] = useState([]);
 
-  const [search, setSearch] = useState({ keyword: '', location: '', remote: false, employment_type: '' });
+  const [search, setSearch] = useState({
+    keyword: '',
+    company: '',
+    location: '',
+    skill: '',
+    remote: false,
+    employment_type: '',
+  });
   const [jobForm, setJobForm] = useState(defaultJobForm);
   const [companyForm, setCompanyForm] = useState({ name: '', description: '', location: '', website: '' });
   const [coverNotes, setCoverNotes] = useState({});
+  const [selectedResumeIds, setSelectedResumeIds] = useState({});
+  const [applicantUpdates, setApplicantUpdates] = useState({});
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -36,10 +62,12 @@ const Jobs = () => {
 
   useEffect(() => {
     loadJobs();
+    loadCompanyDirectory();
     if (isRecruiter) {
       loadCompanies();
     } else {
       loadMyApplications();
+      loadResumes();
     }
   }, [isRecruiter]);
 
@@ -73,12 +101,36 @@ const Jobs = () => {
     }
   };
 
+  const loadResumes = async () => {
+    try {
+      const response = await resumeAPI.list();
+      setResumes(response.data || []);
+    } catch {
+      setResumes([]);
+    }
+  };
+
+  const loadCompanyDirectory = async () => {
+    try {
+      const response = await companyAPI.list();
+      const directory = (response.data || []).reduce((accumulator, company) => {
+        accumulator[company.id] = company.name;
+        return accumulator;
+      }, {});
+      setCompanyDirectory(directory);
+    } catch {
+      setCompanyDirectory({});
+    }
+  };
+
   const handleSearch = async (event) => {
     event.preventDefault();
     setError('');
     const params = {
       keyword: search.keyword || undefined,
+      company: search.company || undefined,
       location: search.location || undefined,
+      skill: search.skill || undefined,
       remote: search.remote || undefined,
       employment_type: search.employment_type || undefined,
     };
@@ -89,7 +141,16 @@ const Jobs = () => {
     try {
       setError('');
       setSuccess('');
-      await jobsAPI.apply(jobId, { cover_note: coverNotes[jobId] || '' });
+      const selectedResumeId = selectedResumeIds[jobId];
+      if (!selectedResumeId) {
+        setError('Please select a resume before applying.');
+        return;
+      }
+
+      await jobsAPI.apply(jobId, {
+        resume_id: Number(selectedResumeId),
+        cover_note: coverNotes[jobId] || '',
+      });
       setSuccess('Application submitted');
       await loadMyApplications();
     } catch (err) {
@@ -144,7 +205,14 @@ const Jobs = () => {
 
   const handleUpdateApplication = async (applicationId, status) => {
     try {
-      await jobsAPI.updateApplicationStatus(applicationId, { status });
+      const currentApplication = applicants.find((item) => item.id === applicationId);
+      const pendingUpdate = applicantUpdates[applicationId] || {};
+
+      await jobsAPI.updateApplicationStatus(applicationId, {
+        status: pendingUpdate.status || status || currentApplication?.status || 'Reviewed',
+        recruiter_notes: pendingUpdate.recruiter_notes || '',
+        is_shortlisted: Boolean(pendingUpdate.is_shortlisted),
+      });
       setSuccess('Application status updated');
       if (selectedJobId) {
         await handleLoadApplicants(selectedJobId);
@@ -152,6 +220,16 @@ const Jobs = () => {
     } catch (err) {
       setError(err.response?.data?.detail || 'Failed to update status');
     }
+  };
+
+  const handleApplicantUpdateChange = (applicationId, field, value) => {
+    setApplicantUpdates((previous) => ({
+      ...previous,
+      [applicationId]: {
+        ...previous[applicationId],
+        [field]: value,
+      },
+    }));
   };
 
   return (
@@ -164,9 +242,11 @@ const Jobs = () => {
       {error && <div className="li-card border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
       {success && <div className="li-card border-green-200 bg-green-50 p-3 text-sm text-green-700">{success}</div>}
 
-      <form onSubmit={handleSearch} className="li-card p-5 grid grid-cols-1 md:grid-cols-4 gap-3">
+      <form onSubmit={handleSearch} className="li-card p-5 grid grid-cols-1 md:grid-cols-3 gap-3">
         <input className="li-input" placeholder="Keyword" value={search.keyword} onChange={(e) => setSearch((prev) => ({ ...prev, keyword: e.target.value }))} />
+        <input className="li-input" placeholder="Company" value={search.company} onChange={(e) => setSearch((prev) => ({ ...prev, company: e.target.value }))} />
         <input className="li-input" placeholder="Location" value={search.location} onChange={(e) => setSearch((prev) => ({ ...prev, location: e.target.value }))} />
+        <input className="li-input" placeholder="Skill" value={search.skill} onChange={(e) => setSearch((prev) => ({ ...prev, skill: e.target.value }))} />
         <select className="li-input" value={search.employment_type} onChange={(e) => setSearch((prev) => ({ ...prev, employment_type: e.target.value }))}>
           <option value="">All types</option>
           <option value="full-time">Full-time</option>
@@ -176,7 +256,7 @@ const Jobs = () => {
           <input type="checkbox" checked={search.remote} onChange={(e) => setSearch((prev) => ({ ...prev, remote: e.target.checked }))} />
           Remote only
         </label>
-        <button className="li-btn-primary md:col-span-4" type="submit">Search Jobs</button>
+        <button className="li-btn-primary md:col-span-3" type="submit">Search Jobs</button>
       </form>
 
       <div className="li-card overflow-hidden">
@@ -192,13 +272,19 @@ const Jobs = () => {
                 <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
                   <div>
                     <p className="text-base font-semibold text-gray-900">{job.title}</p>
+                    <p className="text-sm text-gray-700">{companyDirectory[job.company_id] || `Company #${job.company_id}`}</p>
                     <p className="text-sm text-gray-600">{job.location || 'Location N/A'} • {job.work_mode} • {job.employment_type}</p>
                   </div>
-                  {isRecruiter ? (
-                    <button className="li-btn-secondary" onClick={() => handleLoadApplicants(job.id)}>View Applicants</button>
-                  ) : (
-                    <button className="li-btn-primary" onClick={() => handleApply(job.id)}>Apply</button>
-                  )}
+                  <div className="flex flex-wrap gap-2">
+                    <Link to={`/companies/${job.company_id}/jobs`} className="li-btn-secondary">
+                      View Company
+                    </Link>
+                    {isRecruiter ? (
+                      <button className="li-btn-secondary" onClick={() => handleLoadApplicants(job.id)}>View Applicants</button>
+                    ) : (
+                      <button className="li-btn-primary" onClick={() => handleApply(job.id)}>Apply</button>
+                    )}
+                  </div>
                 </div>
                 <p className="text-sm text-gray-700">{job.description}</p>
                 <div className="flex flex-wrap gap-2 text-xs text-gray-600">
@@ -206,13 +292,25 @@ const Jobs = () => {
                   <span className="rounded-full bg-gray-100 px-3 py-1">{job.employment_type}</span>
                 </div>
                 {!isRecruiter && (
-                  <textarea
-                    className="li-input"
-                    rows={2}
-                    placeholder="Cover note (optional)"
-                    value={coverNotes[job.id] || ''}
-                    onChange={(e) => setCoverNotes((prev) => ({ ...prev, [job.id]: e.target.value }))}
-                  />
+                  <div className="space-y-2">
+                    <select
+                      className="li-input"
+                      value={selectedResumeIds[job.id] || ''}
+                      onChange={(e) => setSelectedResumeIds((previous) => ({ ...previous, [job.id]: e.target.value }))}
+                    >
+                      <option value="">Select resume for application</option>
+                      {resumes.map((resume) => (
+                        <option key={resume.id} value={resume.id}>{resume.original_filename}</option>
+                      ))}
+                    </select>
+                    <textarea
+                      className="li-input"
+                      rows={2}
+                      placeholder="Cover note (optional)"
+                      value={coverNotes[job.id] || ''}
+                      onChange={(e) => setCoverNotes((prev) => ({ ...prev, [job.id]: e.target.value }))}
+                    />
+                  </div>
                 )}
               </div>
             ))}
@@ -228,9 +326,41 @@ const Jobs = () => {
           ) : (
             <div className="divide-y divide-gray-100">
               {myApplications.map((application) => (
-                <div key={application.id} className="p-5 text-sm flex items-center justify-between">
-                  <span className="text-gray-700">Application #{application.id} • Job #{application.job_id}</span>
-                  <span className="font-semibold text-[#0a66c2] rounded-full bg-blue-50 px-3 py-1">{application.status}</span>
+                <div key={application.id} className="p-5 text-sm space-y-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-gray-700">
+                      Application #{application.id} • {companyDirectory[jobs.find((job) => job.id === application.job_id)?.company_id] || 'Company'} • {jobs.find((job) => job.id === application.job_id)?.title || `Job #${application.job_id}`}
+                    </span>
+                    <span className="font-semibold text-[#0a66c2] rounded-full bg-blue-50 px-3 py-1">{application.status}</span>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {getApplicationTimeline(application.status).map((stage) => {
+                      const isCurrent = stage === application.status;
+                      const stageIndex = APPLICATION_FLOW.indexOf(stage);
+                      const currentIndex = APPLICATION_FLOW.indexOf(application.status);
+                      const isCompleted = stageIndex >= 0 && currentIndex >= 0 && stageIndex < currentIndex;
+                      const isTerminalReached = (application.status === 'Offer' || application.status === 'Rejected') && stageIndex >= 0;
+
+                      return (
+                        <span
+                          key={stage}
+                          className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                            isCurrent
+                              ? stage === 'Offer'
+                                ? 'bg-green-100 text-green-800'
+                                : stage === 'Rejected'
+                                  ? 'bg-red-100 text-red-700'
+                                  : 'bg-blue-100 text-blue-800'
+                              : isCompleted || isTerminalReached
+                                ? 'bg-gray-200 text-gray-700'
+                                : 'bg-gray-100 text-gray-500'
+                          }`}
+                        >
+                          {stage}
+                        </span>
+                      );
+                    })}
+                  </div>
                 </div>
               ))}
             </div>
@@ -287,15 +417,40 @@ const Jobs = () => {
               ) : (
                 <div className="divide-y divide-gray-100">
                   {applicants.map((application) => (
-                    <div key={application.id} className="p-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between text-sm">
-                      <span className="text-gray-700">Candidate #{application.candidate_id} • {application.status}</span>
-                      <div className="flex flex-wrap gap-2">
-                        {['Reviewed', 'Interviewed', 'Rejected', 'Offer'].map((state) => (
-                          <button key={state} onClick={() => handleUpdateApplication(application.id, state)} className="li-btn-secondary">
-                            {state}
-                          </button>
-                        ))}
+                    <div key={application.id} className="p-5 space-y-3 text-sm">
+                      <span className="text-gray-700 block">Candidate #{application.candidate_id} • Current: {application.status}</span>
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                        <select
+                          className="li-input"
+                          value={applicantUpdates[application.id]?.status || application.status}
+                          onChange={(e) => handleApplicantUpdateChange(application.id, 'status', e.target.value)}
+                        >
+                          {['Applied', 'Reviewed', 'Interviewed', 'Rejected', 'Offer'].map((state) => (
+                            <option key={state} value={state}>{state}</option>
+                          ))}
+                        </select>
+                        <label className="flex items-center gap-2 text-sm text-gray-700">
+                          <input
+                            type="checkbox"
+                            checked={Boolean(applicantUpdates[application.id]?.is_shortlisted ?? application.is_shortlisted)}
+                            onChange={(e) => handleApplicantUpdateChange(application.id, 'is_shortlisted', e.target.checked)}
+                          />
+                          Shortlist candidate
+                        </label>
+                        <button
+                          onClick={() => handleUpdateApplication(application.id)}
+                          className="li-btn-primary"
+                        >
+                          Save Update
+                        </button>
                       </div>
+                      <textarea
+                        className="li-input"
+                        rows={2}
+                        placeholder="Recruiter notes"
+                        value={applicantUpdates[application.id]?.recruiter_notes ?? application.recruiter_notes ?? ''}
+                        onChange={(e) => handleApplicantUpdateChange(application.id, 'recruiter_notes', e.target.value)}
+                      />
                     </div>
                   ))}
                 </div>

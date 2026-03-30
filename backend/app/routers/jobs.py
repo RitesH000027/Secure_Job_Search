@@ -90,6 +90,7 @@ async def create_job(
 @router.get("/search", response_model=list[JobResponse])
 async def search_jobs(
     keyword: Optional[str] = None,
+    company_id: Optional[int] = None,
     company: Optional[str] = None,
     location: Optional[str] = None,
     skill: Optional[str] = None,
@@ -111,6 +112,9 @@ async def search_jobs(
                 JobPosting.description.ilike(like_query),
             )
         )
+
+    if company_id is not None:
+        query = query.filter(JobPosting.company_id == company_id)
 
     if company:
         query = query.filter(Company.name.ilike(f"%{company}%"))
