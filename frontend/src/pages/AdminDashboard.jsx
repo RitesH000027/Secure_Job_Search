@@ -5,6 +5,7 @@ const AdminDashboard = () => {
   const [stats, setStats] = useState(null);
   const [users, setUsers] = useState([]);
   const [auditLogs, setAuditLogs] = useState([]);
+  const [auditIntegrity, setAuditIntegrity] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -20,9 +21,11 @@ const AdminDashboard = () => {
         adminAPI.getUsers(),
         adminAPI.getAuditLogs(20),
       ]);
+      const integrityRes = await adminAPI.verifyAuditChain();
       setStats(statsRes.data);
       setUsers(usersRes.data.users || usersRes.data);
       setAuditLogs(auditRes.data || []);
+      setAuditIntegrity(integrityRes.data || null);
     } catch (err) {
       setError('Failed to load admin data');
     } finally {
@@ -105,6 +108,16 @@ const AdminDashboard = () => {
           <p className="text-xs text-gray-500">TOTP Enabled</p>
           <p className="mt-2 text-2xl font-semibold text-gray-900">{stats?.security_stats?.totp_enabled || 0}</p>
         </div>
+      </div>
+
+      <div className="li-card p-4 flex items-center justify-between">
+        <div>
+          <p className="text-xs text-gray-500">Audit Hash Chain</p>
+          <p className={`mt-1 text-sm font-semibold ${auditIntegrity?.valid ? 'text-green-700' : 'text-red-700'}`}>
+            {auditIntegrity?.valid ? 'Verified' : 'Integrity issue detected'}
+          </p>
+        </div>
+        <button onClick={loadData} className="li-btn-secondary">Recheck</button>
       </div>
 
       <div className="li-card overflow-hidden">

@@ -12,10 +12,21 @@ from app.models.networking import AuditLog
 from app.schemas.user import UserResponse, UserSuspend
 from app.schemas.networking import AuditLogResponse
 from app.dependencies import get_current_admin
-from app.utils.audit import log_audit_event
+from app.utils.audit import log_audit_event, verify_audit_chain
 
 
 router = APIRouter(prefix="/admin", tags=["Admin Dashboard"])
+
+
+def _log_admin_view(db: Session, current_admin: User, action: str, details: Optional[dict] = None):
+    log_audit_event(
+        db,
+        action=action,
+        target_type="admin_dashboard",
+        actor_user_id=current_admin.id,
+        details=details or {},
+    )
+    db.commit()
 
 
 @router.get("/stats", response_model=dict)
@@ -47,6 +58,8 @@ async def get_platform_stats(
     # TOTP statistics
     totp_enabled_count = db.query(func.count(User.id)).filter(User.totp_enabled == True).scalar()
     
+    _log_admin_view(db, current_admin, "admin_view_stats")
+
     return {
         "total_users": total_users,
         "active_users": active_users,
@@ -104,6 +117,20 @@ async def list_all_users(
     # Get paginated results
     users = query.offset(skip).limit(limit).all()
     
+    _log_admin_view(
+        db,
+        current_admin,
+        "admin_list_users",
+        {
+            "skip": skip,
+            "limit": limit,
+            "role": role,
+            "is_active": is_active,
+            "is_verified": is_verified,
+            "is_suspended": is_suspended,
+        },
+    )
+
     return {
         "users": [UserResponse.from_orm(user) for user in users],
         "total": total,
@@ -138,6 +165,8 @@ async def get_user_details(
     profile = db.query(Profile).filter(Profile.user_id == user_id).first()
     resume_count = db.query(func.count(Resume.id)).filter(Resume.user_id == user_id).scalar()
     
+    _log_admin_view(db, current_admin, "admin_view_user_details", {"user_id": user_id})
+
     return {
         "user": UserResponse.from_orm(user),
         "profile": profile,
@@ -301,6 +330,8 @@ async def list_all_resumes(
     total = query.count()
     resumes = query.offset(skip).limit(limit).all()
     
+    _log_admin_view(db, current_admin, "admin_list_resumes", {"skip": skip, "limit": limit})
+
     return {
         "resumes": resumes,
         "total": total,
@@ -336,6 +367,8 @@ async def get_recent_activity(
         .all()
     )
     
+    _log_admin_view(db, current_admin, "admin_view_activity", {"limit": limit})
+
     return {
         "recent_users": [
             {
@@ -368,9 +401,21 @@ async def get_audit_logs(
     """
     Get recent tamper-evident audit log entries.
     """
+    _log_admin_view(db, current_admin, "admin_view_audit_logs", {"limit": limit})
+
     return (
         db.query(AuditLog)
         .order_by(AuditLog.created_at.desc())
         .limit(limit)
         .all()
     )
+
+
+@router.get("/audit-logs/verify", response_model=dict)
+async def verify_audit_logs(
+    current_admin: User = Depends(get_current_admin),
+    db: Session = Depends(get_db)
+):
+    result = verify_audit_chain(db)
+    _log_admin_view(db, current_admin, "admin_verify_audit_chain", {"valid": result["valid"]})
+    return result

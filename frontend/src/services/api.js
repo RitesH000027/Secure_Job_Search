@@ -93,6 +93,7 @@ export const adminAPI = {
   activateUser: (id) => api.post(`/admin/users/${id}/activate`),
   deleteUser: (id) => api.delete(`/admin/users/${id}`),
   getAuditLogs: (limit = 100) => api.get('/admin/audit-logs', { params: { limit } }),
+  verifyAuditChain: () => api.get('/admin/audit-logs/verify'),
 };
 
 // Company APIs
