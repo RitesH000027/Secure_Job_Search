@@ -125,4 +125,13 @@ export const messageAPI = {
   listMessages: (conversationId) => api.get(`/messages/conversations/${conversationId}/messages`),
 };
 
+export const connectionAPI = {
+  searchUsers: (params) => api.get('/connections/search', { params }),
+  sendRequest: (recipientId) => api.post('/connections/requests', { recipient_id: recipientId }),
+  listReceivedRequests: () => api.get('/connections/requests/received'),
+  listSentRequests: () => api.get('/connections/requests/sent'),
+  acceptRequest: (requestId) => api.post(`/connections/requests/${requestId}/accept`),
+  listFriends: () => api.get('/connections/friends'),
+};
+
 export default api;

@@ -31,6 +31,12 @@ class MessageType(str, enum.Enum):
     SERVER_ENCRYPTED = "server_encrypted"
 
 
+class ConnectionRequestStatus(str, enum.Enum):
+    PENDING = "pending"
+    ACCEPTED = "accepted"
+    REJECTED = "rejected"
+
+
 class Company(Base):
     __tablename__ = "companies"
 
@@ -164,3 +170,18 @@ class AuditLog(Base):
     previous_hash = Column(String(64), nullable=True)
     entry_hash = Column(String(64), nullable=False, unique=True, index=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class ConnectionRequest(Base):
+    __tablename__ = "connection_requests"
+
+    id = Column(Integer, primary_key=True, index=True)
+    requester_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    recipient_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    status = Column(
+        Enum(ConnectionRequestStatus, values_callable=lambda x: [e.value for e in x], validate_strings=True),
+        nullable=False,
+        default=ConnectionRequestStatus.PENDING,
+    )
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

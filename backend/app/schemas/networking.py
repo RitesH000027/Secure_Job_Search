@@ -4,7 +4,7 @@ Schemas for company, jobs, applications, messaging, and audit logs.
 from datetime import datetime
 from typing import Optional
 from pydantic import BaseModel, Field
-from app.models.networking import WorkMode, EmploymentType, ApplicationStatus, MessageType
+from app.models.networking import WorkMode, EmploymentType, ApplicationStatus, MessageType, ConnectionRequestStatus
 
 
 class CompanyCreate(BaseModel):
@@ -107,7 +107,7 @@ class JobApplicationResponse(BaseModel):
 
 
 class ConversationCreate(BaseModel):
-    participant_ids: list[int] = Field(..., min_items=1)
+    participant_ids: list[int]
     is_group: bool = False
     name: Optional[str] = Field(None, max_length=255)
 
@@ -147,6 +147,29 @@ class AuditLogResponse(BaseModel):
     details_json: Optional[str]
     previous_hash: Optional[str]
     entry_hash: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class ConnectionRequestCreate(BaseModel):
+    recipient_id: int
+
+
+class UserConnectionResponse(BaseModel):
+    id: int
+    full_name: str
+    role: str
+    headline: Optional[str] = None
+    connection_status: str
+
+
+class ConnectionRequestResponse(BaseModel):
+    id: int
+    requester_id: int
+    recipient_id: int
+    status: ConnectionRequestStatus
     created_at: datetime
 
     class Config:

@@ -2,11 +2,12 @@
 Encrypted messaging endpoints for one-to-one and group chats.
 """
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app.dependencies import get_current_verified_user
 from app.models.user import User
-from app.models.networking import Conversation, ConversationParticipant, Message
+from app.models.networking import Conversation, ConversationParticipant, Message, ConnectionRequest, ConnectionRequestStatus
 from app.schemas.networking import (
     ConversationCreate,
     ConversationResponse,
@@ -31,6 +32,21 @@ def _is_participant(db: Session, conversation_id: int, user_id: int) -> bool:
     )
 
 
+def _is_connected_friend(db: Session, user_id_a: int, user_id_b: int) -> bool:
+    return (
+        db.query(ConnectionRequest)
+        .filter(
+            ConnectionRequest.status == ConnectionRequestStatus.ACCEPTED,
+            or_(
+                and_(ConnectionRequest.requester_id == user_id_a, ConnectionRequest.recipient_id == user_id_b),
+                and_(ConnectionRequest.requester_id == user_id_b, ConnectionRequest.recipient_id == user_id_a),
+            ),
+        )
+        .first()
+        is not None
+    )
+
+
 @router.post("/conversations", response_model=ConversationResponse, status_code=status.HTTP_201_CREATED)
 async def create_conversation(
     payload: ConversationCreate,
@@ -42,6 +58,11 @@ async def create_conversation(
 
     if not payload.is_group and len(participant_ids) != 2:
         raise HTTPException(status_code=400, detail="One-to-one chat must have exactly two participants")
+
+    if not payload.is_group:
+        other_user_id = next(user_id for user_id in participant_ids if user_id != current_user.id)
+        if not _is_connected_friend(db, current_user.id, other_user_id):
+            raise HTTPException(status_code=403, detail="You can only message connected friends")
 
     conversation = Conversation(
         name=payload.name,

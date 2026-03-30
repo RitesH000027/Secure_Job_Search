@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react';
-import { messageAPI } from '../services/api';
+import { useEffect, useMemo, useState } from 'react';
+import { connectionAPI, messageAPI } from '../services/api';
+import { useAuth } from '../contexts/AuthContext';
 
 const encodeToCiphertext = (input) => {
   try {
@@ -17,173 +18,332 @@ const decodeCiphertext = (input) => {
   }
 };
 
+const getApiErrorMessage = (error, fallbackMessage) => {
+  const detail = error?.response?.data?.detail;
+
+  if (Array.isArray(detail)) {
+    return detail.map((item) => item?.msg || 'Validation error').join(', ');
+  }
+
+  if (typeof detail === 'string' && detail.trim()) {
+    return detail;
+  }
+
+  return fallbackMessage;
+};
+
 const Messages = () => {
+  const { user } = useAuth();
+
+  const [friends, setFriends] = useState([]);
+  const [receivedRequests, setReceivedRequests] = useState([]);
+  const [sentRequests, setSentRequests] = useState([]);
+  const [searchResults, setSearchResults] = useState([]);
   const [conversations, setConversations] = useState([]);
-  const [selectedConversation, setSelectedConversation] = useState(null);
   const [messages, setMessages] = useState([]);
 
-  const [participantInput, setParticipantInput] = useState('');
-  const [isGroup, setIsGroup] = useState(false);
-  const [conversationName, setConversationName] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [activeFriendId, setActiveFriendId] = useState(null);
+  const [activeConversationId, setActiveConversationId] = useState(null);
   const [messageInput, setMessageInput] = useState('');
-  const [messageType, setMessageType] = useState('e2ee');
 
+  const [loadingMessages, setLoadingMessages] = useState(false);
+  const [sending, setSending] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
   useEffect(() => {
+    loadSidebarData();
     loadConversations();
   }, []);
+
+  useEffect(() => {
+    if (!searchQuery.trim()) {
+      setSearchResults([]);
+      return;
+    }
+
+    const timeout = setTimeout(() => {
+      searchUsers(searchQuery.trim());
+    }, 300);
+
+    return () => clearTimeout(timeout);
+  }, [searchQuery]);
+
+  const friendMap = useMemo(() => {
+    return friends.reduce((map, friend) => {
+      map[friend.id] = friend;
+      return map;
+    }, {});
+  }, [friends]);
+
+  const conversationMapByFriendId = useMemo(() => {
+    const map = {};
+
+    conversations.forEach((conversation) => {
+      if (conversation.is_group) {
+        return;
+      }
+
+      const otherUserId = (conversation.participant_ids || []).find((participantId) => participantId !== user?.id);
+      if (otherUserId) {
+        map[otherUserId] = conversation;
+      }
+    });
+
+    return map;
+  }, [conversations, user?.id]);
+
+  const loadSidebarData = async () => {
+    try {
+      setError('');
+      const [friendsResponse, receivedResponse, sentResponse] = await Promise.all([
+        connectionAPI.listFriends(),
+        connectionAPI.listReceivedRequests(),
+        connectionAPI.listSentRequests(),
+      ]);
+
+      setFriends(friendsResponse.data || []);
+      setReceivedRequests(receivedResponse.data || []);
+      setSentRequests(sentResponse.data || []);
+    } catch (err) {
+      setError(getApiErrorMessage(err, 'Failed to load connection data'));
+    }
+  };
 
   const loadConversations = async () => {
     try {
       const response = await messageAPI.listConversations();
       setConversations(response.data || []);
+    } catch (err) {
+      setError(getApiErrorMessage(err, 'Failed to load conversations'));
+    }
+  };
+
+  const searchUsers = async (query) => {
+    try {
+      const response = await connectionAPI.searchUsers({ query, limit: 20 });
+      setSearchResults(response.data || []);
     } catch {
-      setError('Failed to load conversations');
+      setSearchResults([]);
+    }
+  };
+
+  const handleSendRequest = async (recipientId) => {
+    try {
+      setError('');
+      setSuccess('');
+      await connectionAPI.sendRequest(recipientId);
+      setSuccess('Connection request sent');
+      await loadSidebarData();
+      if (searchQuery.trim()) {
+        await searchUsers(searchQuery.trim());
+      }
+    } catch (err) {
+      setError(getApiErrorMessage(err, 'Failed to send connection request'));
+    }
+  };
+
+  const handleAcceptRequest = async (requestId) => {
+    try {
+      setError('');
+      setSuccess('');
+      await connectionAPI.acceptRequest(requestId);
+      setSuccess('Connection request accepted');
+      await loadSidebarData();
+      await loadConversations();
+    } catch (err) {
+      setError(getApiErrorMessage(err, 'Failed to accept request'));
+    }
+  };
+
+  const openChatWithFriend = async (friendId) => {
+    try {
+      setError('');
+      setSuccess('');
+      setActiveFriendId(friendId);
+
+      let conversation = conversationMapByFriendId[friendId];
+
+      if (!conversation) {
+        const response = await messageAPI.createConversation({
+          participant_ids: [friendId],
+          is_group: false,
+          name: null,
+        });
+        conversation = response.data;
+        await loadConversations();
+      }
+
+      setActiveConversationId(conversation.id);
+      await loadMessages(conversation.id);
+    } catch (err) {
+      setError(getApiErrorMessage(err, 'Unable to open chat. Ensure you are connected first.'));
     }
   };
 
   const loadMessages = async (conversationId) => {
     try {
+      setLoadingMessages(true);
       const response = await messageAPI.listMessages(conversationId);
       setMessages(response.data || []);
-      setSelectedConversation(conversationId);
-    } catch {
-      setError('Failed to load messages');
-    }
-  };
-
-  const handleCreateConversation = async (event) => {
-    event.preventDefault();
-    try {
-      setError('');
-      const participantIds = participantInput
-        .split(',')
-        .map((value) => value.trim())
-        .filter(Boolean)
-        .map((value) => Number(value));
-
-      await messageAPI.createConversation({
-        participant_ids: participantIds,
-        is_group: isGroup,
-        name: conversationName || null,
-      });
-
-      setParticipantInput('');
-      setConversationName('');
-      setSuccess('Conversation created');
-      await loadConversations();
     } catch (err) {
-      setError(err.response?.data?.detail || 'Failed to create conversation');
+      setError(getApiErrorMessage(err, 'Failed to load messages'));
+      setMessages([]);
+    } finally {
+      setLoadingMessages(false);
     }
   };
 
-  const handleSend = async (event) => {
+  const handleSendMessage = async (event) => {
     event.preventDefault();
-    if (!selectedConversation || !messageInput) {
+
+    if (!activeConversationId || !messageInput.trim()) {
       return;
     }
 
     try {
+      setSending(true);
       setError('');
-      await messageAPI.sendMessage(selectedConversation, {
-        ciphertext: encodeToCiphertext(messageInput),
-        message_type: messageType,
+      await messageAPI.sendMessage(activeConversationId, {
+        ciphertext: encodeToCiphertext(messageInput.trim()),
+        message_type: 'e2ee',
       });
       setMessageInput('');
-      await loadMessages(selectedConversation);
+      await loadMessages(activeConversationId);
     } catch (err) {
-      setError(err.response?.data?.detail || 'Failed to send message');
+      setError(getApiErrorMessage(err, 'Failed to send message'));
+    } finally {
+      setSending(false);
     }
   };
+
+  const activeFriend = activeFriendId ? friendMap[activeFriendId] : null;
 
   return (
     <div className="space-y-5">
       <div className="li-card p-6">
         <h1 className="li-title">Messaging</h1>
-        <p className="li-subtitle mt-2">Start secure conversations and exchange ciphertext-protected messages.</p>
+        <p className="li-subtitle mt-2">Connect with professionals and chat like a real inbox experience.</p>
       </div>
 
       {error && <div className="li-card border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
       {success && <div className="li-card border-green-200 bg-green-50 p-3 text-sm text-green-700">{success}</div>}
 
-      <form onSubmit={handleCreateConversation} className="li-card p-5 space-y-3">
-        <h2 className="text-base font-semibold text-gray-900">Create Conversation</h2>
-        <input
-          className="li-input"
-          placeholder="Participant user IDs (comma-separated)"
-          value={participantInput}
-          onChange={(e) => setParticipantInput(e.target.value)}
-          required
-        />
-        <input
-          className="li-input"
-          placeholder="Conversation name (optional)"
-          value={conversationName}
-          onChange={(e) => setConversationName(e.target.value)}
-        />
-        <label className="flex items-center gap-2 text-sm text-gray-700">
-          <input type="checkbox" checked={isGroup} onChange={(e) => setIsGroup(e.target.checked)} />
-          Group conversation
-        </label>
-        <button className="li-btn-primary" type="submit">Create</button>
-      </form>
-
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="li-card overflow-hidden">
-          <div className="px-4 py-3 border-b border-gray-200 text-sm font-semibold text-gray-900">Conversations</div>
-          {conversations.length === 0 ? (
-            <div className="p-4 text-sm text-gray-600">No conversations yet.</div>
-          ) : (
-            <div className="divide-y divide-gray-100">
-              {conversations.map((conversation) => (
-                <button
-                  key={conversation.id}
-                  onClick={() => loadMessages(conversation.id)}
-                  className={`w-full text-left p-4 text-sm hover:bg-gray-50 transition-colors ${selectedConversation === conversation.id ? 'bg-blue-50 border-l-4 border-[#0a66c2]' : ''}`}
-                >
-                  <p className="font-semibold text-gray-900">{conversation.name || `Conversation #${conversation.id}`}</p>
-                  <p className="text-xs text-gray-600 mt-1">Participants: {conversation.participant_ids.join(', ')}</p>
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-
-        <div className="md:col-span-2 li-card overflow-hidden">
-          <div className="px-4 py-3 border-b border-gray-200 text-sm font-semibold text-gray-900">Messages</div>
-          <div className="p-4 space-y-3 max-h-96 overflow-y-auto bg-gradient-to-b from-white to-gray-50">
-            {messages.length === 0 ? (
-              <div className="text-sm text-gray-600">Select a conversation to view messages.</div>
-            ) : (
-              messages.map((message) => (
-                <div key={message.id} className="rounded-xl border border-gray-200 bg-white p-3 text-sm shadow-sm">
-                  <div className="text-xs text-gray-500 mb-1">Sender #{message.sender_id} • {message.message_type}</div>
-                  <div className="font-mono break-all text-gray-800">{message.ciphertext}</div>
-                  <div className="text-xs text-gray-500 mt-1">Preview: {decodeCiphertext(message.ciphertext)}</div>
-                </div>
-              ))
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+        <aside className="li-card overflow-hidden lg:col-span-4">
+          <div className="p-4 border-b border-gray-200 space-y-3">
+            <p className="text-sm font-semibold text-gray-900">Add Connection</p>
+            <input
+              className="li-input"
+              placeholder="Search by name or email"
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+            />
+            {searchResults.length > 0 && (
+              <div className="max-h-44 overflow-y-auto space-y-2">
+                {searchResults.map((result) => (
+                  <div key={result.id} className="rounded-lg border border-gray-200 p-2 flex items-center justify-between gap-2">
+                    <div>
+                      <p className="text-sm font-medium text-gray-900">{result.full_name}</p>
+                      <p className="text-xs text-gray-500">{result.headline || result.role}</p>
+                    </div>
+                    {result.connection_status === 'none' ? (
+                      <button className="li-btn-secondary !py-1 !px-3" onClick={() => handleSendRequest(result.id)}>Add</button>
+                    ) : (
+                      <span className="text-xs text-gray-500 capitalize">{result.connection_status.replace('_', ' ')}</span>
+                    )}
+                  </div>
+                ))}
+              </div>
             )}
           </div>
 
-          <form onSubmit={handleSend} className="border-t border-gray-200 p-4 space-y-2">
-            <select className="li-input" value={messageType} onChange={(e) => setMessageType(e.target.value)}>
-              <option value="e2ee">E2EE (client ciphertext)</option>
-              <option value="server_encrypted">Server encrypted</option>
-            </select>
+          <div className="p-4 border-b border-gray-200">
+            <p className="text-sm font-semibold text-gray-900 mb-2">Requests</p>
+            {receivedRequests.length === 0 ? (
+              <p className="text-xs text-gray-500">No pending requests</p>
+            ) : (
+              <div className="space-y-2">
+                {receivedRequests.map((request) => (
+                  <div key={request.id} className="rounded-lg border border-gray-200 p-2 flex items-center justify-between">
+                    <span className="text-xs text-gray-700">User #{request.requester_id}</span>
+                    <button className="li-btn-primary !py-1 !px-3" onClick={() => handleAcceptRequest(request.id)}>Accept</button>
+                  </div>
+                ))}
+              </div>
+            )}
+            {sentRequests.length > 0 && (
+              <p className="text-xs text-gray-500 mt-2">Sent requests: {sentRequests.length}</p>
+            )}
+          </div>
+
+          <div className="p-4">
+            <p className="text-sm font-semibold text-gray-900 mb-2">Friends</p>
+            {friends.length === 0 ? (
+              <p className="text-sm text-gray-500">No connections yet.</p>
+            ) : (
+              <div className="space-y-2">
+                {friends.map((friend) => (
+                  <button
+                    key={friend.id}
+                    onClick={() => openChatWithFriend(friend.id)}
+                    className={`w-full text-left rounded-lg border p-3 transition-colors ${
+                      activeFriendId === friend.id ? 'border-[#0a66c2] bg-blue-50' : 'border-gray-200 hover:bg-gray-50'
+                    }`}
+                  >
+                    <p className="text-sm font-semibold text-gray-900">{friend.full_name}</p>
+                    <p className="text-xs text-gray-500">{friend.headline || friend.role}</p>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </aside>
+
+        <section className="li-card overflow-hidden lg:col-span-8 flex flex-col min-h-[520px]">
+          <div className="px-4 py-3 border-b border-gray-200 bg-white flex items-center justify-between">
+            <div>
+              <p className="text-sm font-semibold text-gray-900">{activeFriend ? activeFriend.full_name : 'Select a friend to chat'}</p>
+              <p className="text-xs text-gray-500">{activeFriend ? activeFriend.headline || activeFriend.role : 'Only connected friends can be messaged'}</p>
+            </div>
+          </div>
+
+          <div className="flex-1 p-4 bg-[#f7f9fb] overflow-y-auto space-y-3">
+            {!activeConversationId ? (
+              <div className="text-sm text-gray-500">Choose a connection from the left panel to start chatting.</div>
+            ) : loadingMessages ? (
+              <div className="text-sm text-gray-500">Loading messages...</div>
+            ) : messages.length === 0 ? (
+              <div className="text-sm text-gray-500">No messages yet. Say hello 👋</div>
+            ) : (
+              messages.map((message) => {
+                const isMine = message.sender_id === user?.id;
+                return (
+                  <div key={message.id} className={`flex ${isMine ? 'justify-end' : 'justify-start'}`}>
+                    <div className={`max-w-[80%] rounded-2xl px-3 py-2 text-sm shadow-sm ${isMine ? 'bg-[#0a66c2] text-white' : 'bg-white text-gray-800 border border-gray-200'}`}>
+                      <p className="whitespace-pre-wrap break-words">{decodeCiphertext(message.ciphertext)}</p>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+
+          <form onSubmit={handleSendMessage} className="p-3 border-t border-gray-200 bg-white flex items-end gap-2">
             <textarea
               className="li-input"
-              rows={3}
-              placeholder="Type message"
+              rows={2}
+              placeholder={activeConversationId ? 'Write a message...' : 'Select a friend to start chatting'}
               value={messageInput}
-              onChange={(e) => setMessageInput(e.target.value)}
+              onChange={(event) => setMessageInput(event.target.value)}
+              disabled={!activeConversationId || sending}
             />
-            <button type="submit" className="li-btn-primary" disabled={!selectedConversation}>
-              Send
+            <button type="submit" className="li-btn-primary whitespace-nowrap" disabled={!activeConversationId || sending || !messageInput.trim()}>
+              {sending ? 'Sending...' : 'Send'}
             </button>
           </form>
-        </div>
+        </section>
       </div>
     </div>
   );

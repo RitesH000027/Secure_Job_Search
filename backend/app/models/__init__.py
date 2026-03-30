@@ -6,6 +6,7 @@ from app.models.networking import (
 	EmploymentType,
 	ApplicationStatus,
 	MessageType,
+	ConnectionRequestStatus,
 	Company,
 	CompanyAdmin,
 	JobPosting,
@@ -14,6 +15,7 @@ from app.models.networking import (
 	ConversationParticipant,
 	Message,
 	AuditLog,
+	ConnectionRequest,
 )
 
 __all__ = [
@@ -26,6 +28,7 @@ __all__ = [
 	"EmploymentType",
 	"ApplicationStatus",
 	"MessageType",
+	"ConnectionRequestStatus",
 	"Company",
 	"CompanyAdmin",
 	"JobPosting",
@@ -34,4 +37,5 @@ __all__ = [
 	"ConversationParticipant",
 	"Message",
 	"AuditLog",
+	"ConnectionRequest",
 ]

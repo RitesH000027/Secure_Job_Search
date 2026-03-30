@@ -3,6 +3,18 @@ import { Link, useParams } from 'react-router-dom';
 import { companyAPI, jobsAPI, resumeAPI } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 
+const normalizeResumeList = (payload) => {
+  if (Array.isArray(payload)) {
+    return payload;
+  }
+
+  if (Array.isArray(payload?.resumes)) {
+    return payload.resumes;
+  }
+
+  return [];
+};
+
 const CompanyJobs = () => {
   const { id } = useParams();
   const { user } = useAuth();
@@ -52,7 +64,7 @@ const CompanyJobs = () => {
   const loadResumes = async () => {
     try {
       const response = await resumeAPI.list();
-      setResumes(response.data || []);
+      setResumes(normalizeResumeList(response.data));
     } catch {
       setResumes([]);
     }

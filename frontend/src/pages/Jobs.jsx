@@ -30,6 +30,18 @@ const getApplicationTimeline = (status) => {
   return APPLICATION_FLOW;
 };
 
+const normalizeResumeList = (payload) => {
+  if (Array.isArray(payload)) {
+    return payload;
+  }
+
+  if (Array.isArray(payload?.resumes)) {
+    return payload.resumes;
+  }
+
+  return [];
+};
+
 const Jobs = () => {
   const { user } = useAuth();
   const isRecruiter = useMemo(() => user?.role === 'recruiter' || user?.role === 'admin', [user]);
@@ -104,7 +116,7 @@ const Jobs = () => {
   const loadResumes = async () => {
     try {
       const response = await resumeAPI.list();
-      setResumes(response.data || []);
+      setResumes(normalizeResumeList(response.data));
     } catch {
       setResumes([]);
     }
