@@ -208,6 +208,38 @@ async def accept_connection_request(
 	return request
 
 
+@router.post("/requests/{request_id}/reject", response_model=ConnectionRequestResponse)
+async def reject_connection_request(
+	request_id: int,
+	current_user: User = Depends(get_current_verified_user),
+	db: Session = Depends(get_db),
+):
+	request = db.query(ConnectionRequest).filter(ConnectionRequest.id == request_id).first()
+	if not request:
+		raise HTTPException(status_code=404, detail="Connection request not found")
+
+	if request.recipient_id != current_user.id:
+		raise HTTPException(status_code=403, detail="Not authorized to reject this request")
+
+	if request.status != ConnectionRequestStatus.PENDING:
+		raise HTTPException(status_code=400, detail="Request is not pending")
+
+	request.status = ConnectionRequestStatus.REJECTED
+
+	log_audit_event(
+		db,
+		action="connection_request_rejected",
+		target_type="connection",
+		actor_user_id=current_user.id,
+		target_id=str(request.requester_id),
+		details={"request_id": request_id},
+	)
+
+	db.commit()
+	db.refresh(request)
+	return request
+
+
 @router.get("/friends", response_model=list[UserConnectionResponse])
 async def list_my_friends(
 	current_user: User = Depends(get_current_verified_user),
@@ -250,4 +282,40 @@ async def list_my_friends(
 		)
 		for user in users
 	]
+
+
+@router.delete("/friends/{friend_id}", response_model=dict)
+async def remove_friend(
+	friend_id: int,
+	current_user: User = Depends(get_current_verified_user),
+	db: Session = Depends(get_db),
+):
+	relation = (
+		db.query(ConnectionRequest)
+		.filter(
+			ConnectionRequest.status == ConnectionRequestStatus.ACCEPTED,
+			or_(
+				and_(ConnectionRequest.requester_id == current_user.id, ConnectionRequest.recipient_id == friend_id),
+				and_(ConnectionRequest.requester_id == friend_id, ConnectionRequest.recipient_id == current_user.id),
+			),
+		)
+		.first()
+	)
+
+	if not relation:
+		raise HTTPException(status_code=404, detail="Friend connection not found")
+
+	db.delete(relation)
+
+	log_audit_event(
+		db,
+		action="friend_removed",
+		target_type="connection",
+		actor_user_id=current_user.id,
+		target_id=str(friend_id),
+		details={"friend_id": friend_id},
+	)
+
+	db.commit()
+	return {"message": "Friend removed"}
 

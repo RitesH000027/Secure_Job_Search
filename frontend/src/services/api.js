@@ -131,7 +131,9 @@ export const connectionAPI = {
   listReceivedRequests: () => api.get('/connections/requests/received'),
   listSentRequests: () => api.get('/connections/requests/sent'),
   acceptRequest: (requestId) => api.post(`/connections/requests/${requestId}/accept`),
+  rejectRequest: (requestId) => api.post(`/connections/requests/${requestId}/reject`),
   listFriends: () => api.get('/connections/friends'),
+  removeFriend: (friendId) => api.delete(`/connections/friends/${friendId}`),
 };
 
 export default api;

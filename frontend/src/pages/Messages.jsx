@@ -157,6 +157,36 @@ const Messages = () => {
     }
   };
 
+  const handleRejectRequest = async (requestId) => {
+    try {
+      setError('');
+      setSuccess('');
+      await connectionAPI.rejectRequest(requestId);
+      setSuccess('Connection request rejected');
+      await loadSidebarData();
+    } catch (err) {
+      setError(getApiErrorMessage(err, 'Failed to reject request'));
+    }
+  };
+
+  const handleRemoveFriend = async (friendId) => {
+    try {
+      setError('');
+      setSuccess('');
+      await connectionAPI.removeFriend(friendId);
+      if (activeFriendId === friendId) {
+        setActiveFriendId(null);
+        setActiveConversationId(null);
+        setMessages([]);
+      }
+      setSuccess('Friend removed');
+      await loadSidebarData();
+      await loadConversations();
+    } catch (err) {
+      setError(getApiErrorMessage(err, 'Failed to remove friend'));
+    }
+  };
+
   const openChatWithFriend = async (friendId) => {
     try {
       setError('');
@@ -266,9 +296,12 @@ const Messages = () => {
             ) : (
               <div className="space-y-2">
                 {receivedRequests.map((request) => (
-                  <div key={request.id} className="rounded-lg border border-gray-200 p-2 flex items-center justify-between">
+                  <div key={request.id} className="rounded-lg border border-gray-200 p-2 flex items-center justify-between gap-2">
                     <span className="text-xs text-gray-700">User #{request.requester_id}</span>
-                    <button className="li-btn-primary !py-1 !px-3" onClick={() => handleAcceptRequest(request.id)}>Accept</button>
+                    <div className="flex gap-1">
+                      <button className="li-btn-primary !py-1 !px-3" onClick={() => handleAcceptRequest(request.id)}>Accept</button>
+                      <button className="li-btn-secondary !py-1 !px-3" onClick={() => handleRejectRequest(request.id)}>Reject</button>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -287,13 +320,26 @@ const Messages = () => {
                 {friends.map((friend) => (
                   <button
                     key={friend.id}
-                    onClick={() => openChatWithFriend(friend.id)}
                     className={`w-full text-left rounded-lg border p-3 transition-colors ${
                       activeFriendId === friend.id ? 'border-[#0a66c2] bg-blue-50' : 'border-gray-200 hover:bg-gray-50'
                     }`}
                   >
-                    <p className="text-sm font-semibold text-gray-900">{friend.full_name}</p>
-                    <p className="text-xs text-gray-500">{friend.headline || friend.role}</p>
+                    <div className="flex items-start justify-between gap-2">
+                      <div onClick={() => openChatWithFriend(friend.id)}>
+                        <p className="text-sm font-semibold text-gray-900">{friend.full_name}</p>
+                        <p className="text-xs text-gray-500">{friend.headline || friend.role}</p>
+                      </div>
+                      <button
+                        type="button"
+                        className="text-xs text-red-600 hover:underline"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          handleRemoveFriend(friend.id);
+                        }}
+                      >
+                        Remove
+                      </button>
+                    </div>
                   </button>
                 ))}
               </div>
