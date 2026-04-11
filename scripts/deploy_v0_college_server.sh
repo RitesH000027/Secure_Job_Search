@@ -15,8 +15,7 @@ cd "$REPO_ROOT/backend"
 if [[ ! -d ".venv" ]]; then
   python3 -m venv .venv
 fi
-source .venv/bin/activate
-pip install -r ../requirements.txt
+./.venv/bin/python -m pip install -r ../requirements.txt
 
 if [[ ! -f "$REPO_ROOT/.env" ]]; then
   echo "[v0][error] Missing $REPO_ROOT/.env"
@@ -26,7 +25,7 @@ fi
 
 echo "[v0] Restarting backend on 127.0.0.1:${BACKEND_PORT}..."
 fuser -k "${BACKEND_PORT}/tcp" >/dev/null 2>&1 || true
-nohup uvicorn app.main:app --host 127.0.0.1 --port "$BACKEND_PORT" > "$REPO_ROOT/backend/backend_v0.log" 2>&1 &
+nohup ./.venv/bin/python -m uvicorn app.main:app --host 127.0.0.1 --port "$BACKEND_PORT" > "$REPO_ROOT/backend/backend_v0.log" 2>&1 &
 
 echo "[v0] Building frontend..."
 cd "$REPO_ROOT/frontend"
