@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-cd ~/projects/FCS/backend
+cd ~/projects/FCS
 
 echo "Syncing backend repo (fast-forward only)..."
 git pull --ff-only
+
+cd backend
 
 if [[ ! -d ".venv" ]]; then
   echo "Missing .venv in ~/projects/FCS/backend"
@@ -13,6 +15,14 @@ if [[ ! -d ".venv" ]]; then
 fi
 
 source .venv/bin/activate
+
+if [[ -f "../requirements.txt" ]]; then
+  echo "Installing/updating Python dependencies from requirements.txt..."
+  pip install -r ../requirements.txt
+else
+  echo "Missing ../requirements.txt. Cannot install dependencies."
+  exit 1
+fi
 
 # optional: kill old process on 8010
 fuser -k 8010/tcp >/dev/null 2>&1 || true
