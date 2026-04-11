@@ -1,6 +1,13 @@
 import axios from 'axios';
 
-export const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000').replace(/\/$/, '');
+const getDefaultApiBaseUrl = () => {
+  if (typeof window !== 'undefined' && window.location?.hostname) {
+    return `${window.location.protocol}//${window.location.hostname}:8010`;
+  }
+  return 'http://127.0.0.1:8010';
+};
+
+export const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || getDefaultApiBaseUrl()).replace(/\/$/, '');
 
 const api = axios.create({
   baseURL: API_BASE_URL,

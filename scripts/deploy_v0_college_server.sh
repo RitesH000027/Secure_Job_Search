@@ -23,13 +23,14 @@ if [[ ! -f "$REPO_ROOT/.env" ]]; then
   exit 1
 fi
 
-echo "[v0] Restarting backend on 127.0.0.1:${BACKEND_PORT}..."
+echo "[v0] Restarting backend on 0.0.0.0:${BACKEND_PORT}..."
 fuser -k "${BACKEND_PORT}/tcp" >/dev/null 2>&1 || true
-nohup ./.venv/bin/python -m uvicorn app.main:app --host 127.0.0.1 --port "$BACKEND_PORT" > "$REPO_ROOT/backend/backend_v0.log" 2>&1 &
+nohup ./.venv/bin/python -m uvicorn app.main:app --host 0.0.0.0 --port "$BACKEND_PORT" > "$REPO_ROOT/backend/backend_v0.log" 2>&1 &
 
 echo "[v0] Building frontend..."
 cd "$REPO_ROOT/frontend"
 npm install
+export VITE_API_BASE_URL="http://192.168.3.40:${BACKEND_PORT}"
 npm run build
 
 echo "[v0] Restarting frontend preview on 0.0.0.0:${FRONTEND_PORT}..."
