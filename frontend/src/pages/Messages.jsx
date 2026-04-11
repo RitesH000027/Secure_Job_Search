@@ -34,6 +34,9 @@ const base64ToUtf8 = (value) => {
   }
 };
 
+const canUseWebCrypto = () =>
+  typeof window !== 'undefined' && Boolean(window.isSecureContext && window.crypto?.subtle);
+
 const generateDeviceKeyPair = async () =>
   crypto.subtle.generateKey(
     {
@@ -128,6 +131,7 @@ const AsyncDecryptedText = ({ promise }) => {
 
 const Messages = () => {
   const { user } = useAuth();
+  const webCryptoAvailable = canUseWebCrypto();
 
   const [friends, setFriends] = useState([]);
   const [receivedRequests, setReceivedRequests] = useState([]);
@@ -203,6 +207,12 @@ const Messages = () => {
   const getActiveConversation = () => conversations.find((item) => item.id === activeConversationId) || null;
 
   const initializeEncryption = async () => {
+    if (!webCryptoAvailable) {
+      setEncryptionReady(true);
+      setSuccess('Compatibility mode enabled: secure-context encryption is unavailable on this connection.');
+      return;
+    }
+
     try {
       let storedPublic = localStorage.getItem(DEVICE_PUBLIC_KEY_STORAGE);
       let storedPrivate = localStorage.getItem(DEVICE_PRIVATE_KEY_STORAGE);
@@ -341,7 +351,9 @@ const Messages = () => {
   };
 
   const prepareConversation = async (conversation) => {
-    await getConversationKey(conversation);
+    if (webCryptoAvailable) {
+      await getConversationKey(conversation);
+    }
     await loadMessages(conversation.id);
   };
 
@@ -493,12 +505,18 @@ const Messages = () => {
 
       setSending(true);
       setError('');
-      const conversationKey = await getConversationKey(activeConversation);
-      const encryptedPayload = await encryptWithConversationKey(messageInput.trim(), conversationKey);
+      let encryptedPayload = utf8ToBase64(messageInput.trim());
+      let messageType = 'server_encrypted';
+
+      if (webCryptoAvailable) {
+        const conversationKey = await getConversationKey(activeConversation);
+        encryptedPayload = await encryptWithConversationKey(messageInput.trim(), conversationKey);
+        messageType = 'e2ee';
+      }
 
       await messageAPI.sendMessage(activeConversationId, {
         ciphertext: encryptedPayload,
-        message_type: 'e2ee',
+        message_type: messageType,
       });
       setMessageInput('');
       await loadMessages(activeConversationId);
@@ -510,6 +528,10 @@ const Messages = () => {
   };
 
   const buildMessagePromise = (message) => {
+    if (!webCryptoAvailable) {
+      return Promise.resolve(base64ToUtf8(message.ciphertext));
+    }
+
     const activeConversation = getActiveConversation();
     if (!activeConversation) {
       return Promise.resolve('[unable to decrypt]');
