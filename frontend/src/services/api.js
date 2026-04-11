@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000').replace(/\/$/, '');
+export const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000').replace(/\/$/, '');
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -56,6 +56,9 @@ export const authAPI = {
   verifyOTP: (data) => api.post('/auth/verify-otp', data),
   resendOTP: (data) => api.post('/auth/resend-otp', data),
   login: (data) => api.post('/auth/login', data),
+  requestHighRiskOTP: (action) => api.post('/auth/high-risk-otp/request', { action }),
+  requestPasswordReset: (email) => api.post('/auth/password-reset', { email }),
+  confirmPasswordReset: (data) => api.post('/auth/password-reset/confirm', data),
   getCurrentUser: () => api.get('/auth/me'),
   enableTOTP: () => api.post('/auth/totp/enable'),
   verifyTOTP: (data) => api.post('/auth/totp/verify', data),
@@ -66,7 +69,16 @@ export const profileAPI = {
   getProfile: () => api.get('/profile/me'),
   getMyProfile: () => api.get('/profile/me'),
   updateProfile: (data) => api.put('/profile/me', data),
+  uploadProfilePicture: (file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return api.post('/profile/me/picture', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  },
+  deleteMyProfile: (otpCode) => api.delete('/profile/me', { params: { otp_code: otpCode } }),
   getStats: () => api.get('/profile/stats/me'),
+  getRecentViewers: (limit = 20) => api.get('/profile/viewers/me', { params: { limit } }),
 };
 
 // Resume APIs
@@ -76,13 +88,15 @@ export const resumeAPI = {
     headers: { 'Content-Type': 'multipart/form-data' },
   }),
   list: () => api.get('/resume/list'),
-  download: (id) => api.get(`/resume/download/${id}`, {
+  download: (id, otpCode) => api.get(`/resume/download/${id}`, {
+    params: { otp_code: otpCode },
     responseType: 'blob',
   }),
-  delete: (id) => api.delete(`/resume/${id}`),
+  delete: (id, otpCode) => api.delete(`/resume/${id}`, { params: { otp_code: otpCode } }),
   toggleVisibility: (id, isPublic) => api.patch(`/resume/${id}/visibility`, null, {
     params: { is_public: isPublic },
   }),
+  verifyIntegrity: (id) => api.get(`/resume/${id}/integrity`),
 };
 
 // Admin APIs
@@ -139,6 +153,7 @@ export const connectionAPI = {
   acceptRequest: (requestId) => api.post(`/connections/requests/${requestId}/accept`),
   rejectRequest: (requestId) => api.post(`/connections/requests/${requestId}/reject`),
   listFriends: () => api.get('/connections/friends'),
+  getGraph: () => api.get('/connections/graph'),
   removeFriend: (friendId) => api.delete(`/connections/friends/${friendId}`),
 };
 

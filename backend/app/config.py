@@ -71,6 +71,17 @@ class Settings(BaseSettings):
     # Logging
     LOG_LEVEL: str = "INFO"
     LOG_FILE: str = "/var/log/job-platform/app.log"
+
+    # PKI
+    PKI_PRIVATE_KEY_PATH: str = "/home/iiitd/projects/FCS/backend/keys/app_signing_private.pem"
+    PKI_PUBLIC_KEY_PATH: str = "/home/iiitd/projects/FCS/backend/keys/app_signing_public.pem"
+
+    # Host validation
+    ALLOWED_HOSTS: List[str] = [
+        "localhost",
+        "127.0.0.1",
+        "192.168.3.40",
+    ]
     
     class Config:
         env_file = ".env"

@@ -109,21 +109,21 @@ FCS/
 
 ## 🛡️ Security Features
 
-### Implemented
-- [x] HTTPS with TLS 1.2+
-- [x] Password hashing (bcrypt)
-- [x] JWT authentication
-- [x] OTP verification
-- [x] Parameterized queries (SQLAlchemy)
+### Implemented in Application
+- [x] Password hashing (Argon2)
+- [x] JWT authentication + protected routes
+- [x] Email/mobile OTP verification and OTP-gated high-risk actions
+- [x] Resume encryption at rest (Fernet) with access control
+- [x] End-to-end encrypted (ciphertext-only) messaging flow
+- [x] PKI-backed signing and verification for integrity-critical flows
+- [x] Tamper-evident audit logs (hash-chained with verification endpoint)
+- [x] SQL injection protections via SQLAlchemy ORM patterns
+- [x] Security headers and trusted host validation
 
-### In Progress
-- [ ] Resume encryption at rest
-- [ ] E2EE messaging
-- [ ] PKI message signing
-- [ ] Virtual keyboard for OTP
-- [ ] Hash-chained audit logs
-- [ ] CSRF protection
-- [ ] Rate limiting
+### Deployment Verification Required
+- [ ] HTTPS/TLS termination verification on VM/Nginx runtime
+- [ ] Production rate-limit policy tuning + validation under load
+- [ ] Final concurrency/scalability demo on target deployment
 
 ## 📖 API Documentation
 

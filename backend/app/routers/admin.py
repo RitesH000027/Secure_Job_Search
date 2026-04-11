@@ -1,6 +1,7 @@
 """
 Admin dashboard endpoints for user and platform management
 """
+import json
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
@@ -13,6 +14,7 @@ from app.schemas.user import UserResponse, UserSuspend
 from app.schemas.networking import AuditLogResponse
 from app.dependencies import get_current_admin
 from app.utils.audit import log_audit_event, verify_audit_chain
+from app.utils.pki import sign_bytes, verify_signature, get_public_key_pem
 
 
 router = APIRouter(prefix="/admin", tags=["Admin Dashboard"])
@@ -417,5 +419,21 @@ async def verify_audit_logs(
     db: Session = Depends(get_db)
 ):
     result = verify_audit_chain(db)
+    latest_entry = db.query(AuditLog).order_by(AuditLog.id.desc()).first()
+    snapshot = {
+        "valid": result["valid"],
+        "broken_at_id": result["broken_at_id"],
+        "total_entries": result["total_entries"],
+        "latest_entry_hash": latest_entry.entry_hash if latest_entry else None,
+    }
+    payload = json.dumps(snapshot, sort_keys=True).encode("utf-8")
+    signature = sign_bytes(payload)
+    signature_valid = verify_signature(payload, signature)
+
     _log_admin_view(db, current_admin, "admin_verify_audit_chain", {"valid": result["valid"]})
-    return result
+    return {
+        **result,
+        "pki_snapshot_signature": signature,
+        "pki_signature_valid": signature_valid,
+        "signer_public_key": get_public_key_pem(),
+    }

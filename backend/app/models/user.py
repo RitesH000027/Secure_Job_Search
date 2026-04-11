@@ -63,12 +63,18 @@ class Profile(Base):
     headline = Column(String(255))
     location = Column(String(255))
     bio = Column(Text)
+    education = Column(Text)
+    experience = Column(Text)
+    skills = Column(Text)
     profile_picture_url = Column(String(500))
     
     # Privacy settings (public, connections, private)
     privacy_headline = Column(String(20), default="public")
     privacy_location = Column(String(20), default="public")
     privacy_bio = Column(String(20), default="public")
+    privacy_education = Column(String(20), default="public")
+    privacy_experience = Column(String(20), default="public")
+    privacy_skills = Column(String(20), default="public")
     privacy_profile_picture = Column(String(20), default="public")
     
     # Privacy toggles for contact information
@@ -88,6 +94,16 @@ class Profile(Base):
 
     def __repr__(self):
         return f"<Profile user_id={self.user_id}>"
+
+
+class ProfileView(Base):
+    """Stores recent profile viewer entries for privacy-aware analytics."""
+    __tablename__ = "profile_views"
+
+    id = Column(Integer, primary_key=True, index=True)
+    viewed_user_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False, index=True)
+    viewer_user_id = Column(Integer, ForeignKey('users.id', ondelete='SET NULL'), nullable=True, index=True)
+    viewed_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
 
 class OTPToken(Base):

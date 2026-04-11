@@ -61,6 +61,10 @@ const Login = () => {
             <button type="submit" className="li-btn-primary w-full" disabled={loading}>
               {loading ? 'Signing in...' : 'Sign in'}
             </button>
+
+            <Link className="block text-center text-sm text-[#0a66c2] font-semibold hover:underline" to="/forgot-password">
+              Forgot password?
+            </Link>
           </form>
 
           <p className="mt-5 text-sm text-gray-600">

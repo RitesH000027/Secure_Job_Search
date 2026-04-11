@@ -1,8 +1,12 @@
 """
 Main FastAPI application
 """
+import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy import inspect, text
 from app.config import settings
 from app.database import engine, Base
@@ -17,6 +21,17 @@ app = FastAPI(
     redoc_url="/redoc"
 )
 
+
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        response = await call_next(request)
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["Referrer-Policy"] = "same-origin"
+        response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+        response.headers["Content-Security-Policy"] = "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self' http: https:"
+        return response
+
 # CORS middleware
 app.add_middleware(
     CORSMiddleware,
@@ -26,6 +41,12 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(TrustedHostMiddleware, allowed_hosts=settings.ALLOWED_HOSTS)
+app.add_middleware(SecurityHeadersMiddleware)
+
+PROFILE_PICTURE_DIR = os.path.join(settings.UPLOAD_DIR, "profile_pictures")
+os.makedirs(PROFILE_PICTURE_DIR, exist_ok=True)
+app.mount("/profile-pictures", StaticFiles(directory=PROFILE_PICTURE_DIR), name="profile-pictures")
 
 # Include routers
 app.include_router(auth.router)
@@ -54,6 +75,32 @@ async def ensure_schema_updates():
             connection.execute(text("ALTER TABLE users ADD COLUMN mobile_number VARCHAR(20)"))
         if "is_mobile_verified" not in existing_columns:
             connection.execute(text("ALTER TABLE users ADD COLUMN is_mobile_verified BOOLEAN DEFAULT FALSE"))
+
+    if "resumes" in inspector.get_table_names():
+        resume_columns = {column["name"] for column in inspector.get_columns("resumes")}
+        with engine.begin() as connection:
+            if "file_hash_sha256" not in resume_columns:
+                connection.execute(text("ALTER TABLE resumes ADD COLUMN file_hash_sha256 VARCHAR(64)"))
+            if "integrity_signature" not in resume_columns:
+                connection.execute(text("ALTER TABLE resumes ADD COLUMN integrity_signature TEXT"))
+            if "integrity_algorithm" not in resume_columns:
+                connection.execute(text("ALTER TABLE resumes ADD COLUMN integrity_algorithm VARCHAR(50) DEFAULT 'rsa-pss-sha256'"))
+
+    if "profiles" in inspector.get_table_names():
+        profile_columns = {column["name"] for column in inspector.get_columns("profiles")}
+        with engine.begin() as connection:
+            if "education" not in profile_columns:
+                connection.execute(text("ALTER TABLE profiles ADD COLUMN education TEXT"))
+            if "experience" not in profile_columns:
+                connection.execute(text("ALTER TABLE profiles ADD COLUMN experience TEXT"))
+            if "skills" not in profile_columns:
+                connection.execute(text("ALTER TABLE profiles ADD COLUMN skills TEXT"))
+            if "privacy_education" not in profile_columns:
+                connection.execute(text("ALTER TABLE profiles ADD COLUMN privacy_education VARCHAR(20) DEFAULT 'public'"))
+            if "privacy_experience" not in profile_columns:
+                connection.execute(text("ALTER TABLE profiles ADD COLUMN privacy_experience VARCHAR(20) DEFAULT 'public'"))
+            if "privacy_skills" not in profile_columns:
+                connection.execute(text("ALTER TABLE profiles ADD COLUMN privacy_skills VARCHAR(20) DEFAULT 'public'"))
 
 @app.get("/")
 async def root():

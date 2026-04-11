@@ -319,3 +319,37 @@ async def remove_friend(
 	db.commit()
 	return {"message": "Friend removed"}
 
+
+@router.get("/graph", response_model=dict)
+async def get_connection_graph(
+	current_user: User = Depends(get_current_verified_user),
+	db: Session = Depends(get_db),
+):
+	friends = await list_my_friends(current_user=current_user, db=db)
+	friend_ids = [friend.id for friend in friends]
+
+	edges = []
+	if friend_ids:
+		relations = (
+			db.query(ConnectionRequest)
+			.filter(
+				ConnectionRequest.status == ConnectionRequestStatus.ACCEPTED,
+				ConnectionRequest.requester_id.in_(friend_ids),
+				ConnectionRequest.recipient_id.in_(friend_ids),
+			)
+			.all()
+		)
+		edges = [
+			{"from": relation.requester_id, "to": relation.recipient_id}
+			for relation in relations
+		]
+
+	return {
+		"owner_id": current_user.id,
+		"nodes": [{"id": current_user.id, "label": current_user.full_name or current_user.email}] + [
+			{"id": friend.id, "label": friend.full_name}
+			for friend in friends
+		],
+		"edges": edges,
+	}
+

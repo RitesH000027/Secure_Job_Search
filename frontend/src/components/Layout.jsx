@@ -111,25 +111,9 @@ const Layout = () => {
           </div>
         </aside>
 
-        <section className="lg:col-span-6 space-y-4 min-w-0">
+        <section className="lg:col-span-9 space-y-4 min-w-0">
           <Outlet />
         </section>
-
-        <aside className="hidden lg:block lg:col-span-3 space-y-4">
-          <div className="li-card p-4">
-            <p className="text-sm font-semibold text-gray-900 mb-3">Trending in your network</p>
-            <ul className="text-sm text-gray-700 space-y-2">
-              <li>#Hiring</li>
-              <li>#CyberSecurity</li>
-              <li>#FastAPI</li>
-              <li>#RemoteJobs</li>
-            </ul>
-          </div>
-
-          <div className="li-card p-4 text-xs text-gray-500">
-            <p>CareerBridge • March Milestone UI</p>
-          </div>
-        </aside>
       </main>
     </div>
   );

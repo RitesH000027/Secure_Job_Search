@@ -14,7 +14,7 @@ from app.database import get_db
 from app.models.user import User, Profile
 from app.schemas.user import (
     UserRegister, UserLogin, OTPVerify, OTPResend,
-    PasswordReset, PasswordResetConfirm, Token, TokenRefresh,
+    PasswordReset, PasswordResetConfirm, HighRiskOTPRequest, Token, TokenRefresh,
     UserResponse, UserWithProfile
 )
 from app.utils.security import (
@@ -25,9 +25,11 @@ from app.utils.otp import create_otp_token, verify_otp
 from app.utils.totp import generate_totp_secret, get_totp_uri, generate_qr_code, verify_totp
 from app.dependencies import get_current_user, get_current_verified_user
 from app.config import settings
+from app.utils.audit import log_audit_event
 
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
+ALLOWED_HIGH_RISK_ACTIONS = {"resume_download", "resume_delete", "account_delete"}
 
 
 def send_otp_email(email: str, otp: str, purpose: str):
@@ -163,7 +165,17 @@ async def register(
     shared_otp, _ = create_otp_token(db, new_user.id, purpose="registration")
     background_tasks.add_task(send_otp_email, new_user.email, shared_otp, "registration")
     background_tasks.add_task(send_otp_sms, new_user.mobile_number, shared_otp, "registration")
-    
+
+    log_audit_event(
+        db,
+        action="user_registered",
+        target_type="user",
+        actor_user_id=new_user.id,
+        target_id=str(new_user.id),
+        details={"email": new_user.email, "role": new_user.role.value},
+    )
+    db.commit()
+
     return {
         "message": "Registration successful. Please verify using the OTP sent to both email and mobile.",
         "email": new_user.email,
@@ -220,6 +232,13 @@ async def verify_otp_endpoint(
     # Activate user account
     user.is_verified = True
     user.is_mobile_verified = True
+    log_audit_event(
+        db,
+        action="registration_otp_verified",
+        target_type="user",
+        actor_user_id=user.id,
+        target_id=str(user.id),
+    )
     db.commit()
     
     # Generate tokens
@@ -316,6 +335,13 @@ async def login(
     
     # Update last login
     user.updated_at = datetime.utcnow()
+    log_audit_event(
+        db,
+        action="user_logged_in",
+        target_type="user",
+        actor_user_id=user.id,
+        target_id=str(user.id),
+    )
     db.commit()
     
     # Generate tokens
@@ -405,10 +431,54 @@ async def request_password_reset(
         return {"message": "If the email exists, a password reset OTP has been sent."}
     
     # Generate and send OTP
-    otp, otp_token = create_otp_token(db, user.id, purpose="password_reset")
+    otp, _ = create_otp_token(db, user.id, purpose="password_reset")
     background_tasks.add_task(send_otp_email, user.email, otp, "password_reset")
-    
+
+    log_audit_event(
+        db,
+        action="password_reset_requested",
+        target_type="user",
+        actor_user_id=user.id,
+        target_id=str(user.id),
+    )
+    db.commit()
+
     return {"message": "If the email exists, a password reset OTP has been sent."}
+
+
+@router.post("/high-risk-otp/request", response_model=dict)
+async def request_high_risk_action_otp(
+    payload: HighRiskOTPRequest,
+    background_tasks: BackgroundTasks,
+    current_user: User = Depends(get_current_verified_user),
+    db: Session = Depends(get_db),
+):
+    action = payload.action.strip().lower()
+    if action not in ALLOWED_HIGH_RISK_ACTIONS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Unsupported high-risk action",
+        )
+
+    otp, _ = create_otp_token(db, current_user.id, purpose=action)
+    background_tasks.add_task(send_otp_email, current_user.email, otp, action)
+    if current_user.mobile_number:
+        background_tasks.add_task(send_otp_sms, current_user.mobile_number, otp, action)
+
+    log_audit_event(
+        db,
+        action="high_risk_otp_requested",
+        target_type="otp",
+        actor_user_id=current_user.id,
+        target_id=str(current_user.id),
+        details={"action": action},
+    )
+    db.commit()
+
+    return {
+        "message": "OTP sent for high-risk action verification.",
+        "action": action,
+    }
 
 
 @router.post("/password-reset/confirm", response_model=dict)
@@ -441,6 +511,13 @@ async def confirm_password_reset(
     
     # Update password
     user.hashed_password = hash_password(reset_data.new_password)
+    log_audit_event(
+        db,
+        action="password_reset_confirmed",
+        target_type="user",
+        actor_user_id=user.id,
+        target_id=str(user.id),
+    )
     db.commit()
     
     return {"message": "Password reset successful. You can now login with your new password."}
@@ -616,6 +693,13 @@ async def login_with_totp(
     
     # Update last login
     user.updated_at = datetime.utcnow()
+    log_audit_event(
+        db,
+        action="user_logged_in_totp",
+        target_type="user",
+        actor_user_id=user.id,
+        target_id=str(user.id),
+    )
     db.commit()
     
     # Generate tokens

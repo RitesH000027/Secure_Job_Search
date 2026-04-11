@@ -25,6 +25,9 @@ class Resume(Base):
     # Encryption metadata
     encryption_method = Column(String(50), default="fernet", nullable=False)
     is_encrypted = Column(Boolean, default=True, nullable=False)
+    file_hash_sha256 = Column(String(64), nullable=True)
+    integrity_signature = Column(String(4096), nullable=True)
+    integrity_algorithm = Column(String(50), default="rsa-pss-sha256", nullable=False)
     
     # Access control
     is_public = Column(Boolean, default=False)  # If true, anyone can download

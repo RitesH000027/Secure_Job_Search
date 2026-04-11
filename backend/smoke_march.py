@@ -9,6 +9,7 @@ os.environ["DATABASE_URL"] = "sqlite:///./smoke_march.db"
 os.environ["ENCRYPTION_KEY"] = Fernet.generate_key().decode()
 os.environ["DEBUG"] = "False"
 os.environ["CORS_ORIGINS"] = '["http://localhost:5174"]'
+os.environ["ALLOWED_HOSTS"] = '["localhost", "127.0.0.1", "testserver"]'
 
 from fastapi.testclient import TestClient
 
@@ -135,7 +136,22 @@ def run_smoke() -> None:
         assert status_response.status_code == 200, status_response.text
         assert status_response.json()["status"] == "Reviewed", "Application status update failed"
 
-        # 6) Create conversation and send encrypted message (ciphertext only)
+        # 6) Candidate and recruiter must be connected before messaging
+        connect_response = client.post(
+            "/connections/requests",
+            headers=candidate_headers,
+            json={"recipient_id": recruiter_id},
+        )
+        assert connect_response.status_code == 201, connect_response.text
+        connection_request_id = connect_response.json()["id"]
+
+        accept_response = client.post(
+            f"/connections/requests/{connection_request_id}/accept",
+            headers=recruiter_headers,
+        )
+        assert accept_response.status_code == 200, accept_response.text
+
+        # 7) Create conversation and send encrypted message (ciphertext only)
         conversation_response = client.post(
             "/messages/conversations",
             headers=candidate_headers,
@@ -151,7 +167,7 @@ def run_smoke() -> None:
         )
         assert message_response.status_code == 201, message_response.text
 
-        # 7) Admin reads audit logs
+        # 8) Admin reads audit logs
         audit_response = client.get("/admin/audit-logs", headers=admin_headers)
         assert audit_response.status_code == 200, audit_response.text
         logs = audit_response.json()

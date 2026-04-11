@@ -53,6 +53,11 @@ class PasswordReset(BaseModel):
     email: EmailStr
 
 
+class HighRiskOTPRequest(BaseModel):
+    """Schema for requesting OTP for high-risk authenticated actions"""
+    action: str = Field(..., min_length=3, max_length=50)
+
+
 class PasswordResetConfirm(BaseModel):
     """Schema for password reset confirmation"""
     email: EmailStr
@@ -98,7 +103,7 @@ class UserResponse(UserBase):
     mobile_number: Optional[str] = None
     is_active: bool
     is_verified: bool
-    is_mobile_verified: bool
+    is_mobile_verified: bool = False
     is_suspended: bool
     public_key: Optional[str] = None
     created_at: datetime
@@ -123,6 +128,10 @@ class ProfileBase(BaseModel):
     headline: Optional[str] = Field(None, max_length=200)
     location: Optional[str] = Field(None, max_length=100)
     bio: Optional[str] = Field(None, max_length=1000)
+    education: Optional[str] = Field(None, max_length=2000)
+    experience: Optional[str] = Field(None, max_length=4000)
+    skills: Optional[str] = Field(None, max_length=1000)
+    profile_picture_url: Optional[str] = Field(None, max_length=500)
 
 
 class ProfileCreate(ProfileBase):
@@ -132,6 +141,13 @@ class ProfileCreate(ProfileBase):
 
 class ProfileUpdate(ProfileBase):
     """Schema for updating a profile"""
+    privacy_headline: Optional[str] = Field(None, pattern="^(public|connections|private)$")
+    privacy_location: Optional[str] = Field(None, pattern="^(public|connections|private)$")
+    privacy_bio: Optional[str] = Field(None, pattern="^(public|connections|private)$")
+    privacy_education: Optional[str] = Field(None, pattern="^(public|connections|private)$")
+    privacy_experience: Optional[str] = Field(None, pattern="^(public|connections|private)$")
+    privacy_skills: Optional[str] = Field(None, pattern="^(public|connections|private)$")
+    privacy_profile_picture: Optional[str] = Field(None, pattern="^(public|connections|private)$")
     privacy_show_email: Optional[bool] = None
     privacy_show_phone: Optional[bool] = None
     privacy_show_location: Optional[bool] = None
