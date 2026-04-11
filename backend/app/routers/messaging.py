@@ -29,6 +29,7 @@ from app.schemas.networking import (
     ConversationKeyEnvelopeResponse,
 )
 from app.utils.audit import log_audit_event
+from app.utils.input_sanitization import sanitize_text
 
 
 router = APIRouter(prefix="/messages", tags=["Messaging"])
@@ -79,8 +80,10 @@ async def create_conversation(
         if not _is_connected_friend(db, current_user_id, other_user_id):
             raise HTTPException(status_code=403, detail="You can only message connected friends")
 
+    conversation_name = sanitize_text(payload.name, max_length=255)
+
     conversation = Conversation(
-        name=payload.name,
+        name=conversation_name,
         is_group=payload.is_group,
         created_by=current_user_id,
     )

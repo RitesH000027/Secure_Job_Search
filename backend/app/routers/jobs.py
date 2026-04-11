@@ -28,6 +28,7 @@ from app.schemas.networking import (
     JobApplicationResponse,
 )
 from app.utils.audit import log_audit_event
+from app.utils.input_sanitization import sanitize_fields
 
 
 router = APIRouter(prefix="/jobs", tags=["Jobs"])
@@ -48,27 +49,35 @@ async def create_job(
     current_user: User = Depends(get_current_recruiter),
     db: Session = Depends(get_db),
 ):
-    company = db.query(Company).filter(Company.id == payload.company_id).first()
+    payload_data = sanitize_fields(
+        payload.dict(),
+        text_fields=["title", "description", "required_skills", "location"],
+    )
+
+    if not payload_data.get("title") or not payload_data.get("description"):
+        raise HTTPException(status_code=400, detail="Title and description are required")
+
+    company = db.query(Company).filter(Company.id == payload_data["company_id"]).first()
     if not company:
         raise HTTPException(status_code=404, detail="Company not found")
 
-    if not _is_company_admin(db, payload.company_id, current_user.id) and current_user.role.value != "admin":
+    if not _is_company_admin(db, payload_data["company_id"], current_user.id) and current_user.role.value != "admin":
         raise HTTPException(status_code=403, detail="Not authorized to post for this company")
 
-    if payload.salary_min and payload.salary_max and payload.salary_min > payload.salary_max:
+    if payload_data.get("salary_min") and payload_data.get("salary_max") and payload_data["salary_min"] > payload_data["salary_max"]:
         raise HTTPException(status_code=400, detail="salary_min cannot exceed salary_max")
 
     job = JobPosting(
-        company_id=payload.company_id,
-        title=payload.title,
-        description=payload.description,
-        required_skills=payload.required_skills,
-        location=payload.location,
-        work_mode=payload.work_mode,
-        employment_type=payload.employment_type,
-        salary_min=payload.salary_min,
-        salary_max=payload.salary_max,
-        application_deadline=payload.application_deadline,
+        company_id=payload_data["company_id"],
+        title=payload_data["title"],
+        description=payload_data["description"],
+        required_skills=payload_data.get("required_skills"),
+        location=payload_data.get("location"),
+        work_mode=payload_data.get("work_mode"),
+        employment_type=payload_data.get("employment_type"),
+        salary_min=payload_data.get("salary_min"),
+        salary_max=payload_data.get("salary_max"),
+        application_deadline=payload_data.get("application_deadline"),
         created_by=current_user.id,
     )
     db.add(job)
@@ -79,7 +88,7 @@ async def create_job(
         target_type="job_posting",
         actor_user_id=current_user.id,
         target_id=None,
-        details={"title": payload.title, "company_id": payload.company_id},
+        details={"title": payload_data["title"], "company_id": payload_data["company_id"]},
     )
 
     db.commit()
@@ -160,7 +169,10 @@ async def update_job(
     if not _is_company_admin(db, job.company_id, current_user.id) and current_user.role.value != "admin":
         raise HTTPException(status_code=403, detail="Not authorized to update this job")
 
-    update_data = payload.dict(exclude_unset=True)
+    update_data = sanitize_fields(
+        payload.dict(exclude_unset=True),
+        text_fields=["title", "description", "required_skills", "location"],
+    )
 
     salary_min = update_data.get("salary_min", job.salary_min)
     salary_max = update_data.get("salary_max", job.salary_max)
@@ -195,8 +207,13 @@ async def apply_to_job(
     if not job:
         raise HTTPException(status_code=404, detail="Active job not found")
 
-    if payload.resume_id:
-        resume = db.query(Resume).filter(Resume.id == payload.resume_id).first()
+    payload_data = sanitize_fields(
+        payload.dict(),
+        text_fields=["cover_note"],
+    )
+
+    if payload_data.get("resume_id"):
+        resume = db.query(Resume).filter(Resume.id == payload_data["resume_id"]).first()
         if not resume or (resume.user_id != current_user.id and current_user.role.value != "admin"):
             raise HTTPException(status_code=403, detail="Invalid resume access")
 
@@ -214,8 +231,8 @@ async def apply_to_job(
     application = JobApplication(
         job_id=job_id,
         candidate_id=current_user.id,
-        resume_id=payload.resume_id,
-        cover_note=payload.cover_note,
+        resume_id=payload_data.get("resume_id"),
+        cover_note=payload_data.get("cover_note"),
         status=ApplicationStatus.APPLIED,
     )
     db.add(application)
@@ -286,7 +303,11 @@ async def update_application_status(
         raise HTTPException(status_code=403, detail="Not authorized to update this application")
 
     application.status = payload.status
-    application.recruiter_notes = payload.recruiter_notes
+    update_data = sanitize_fields(
+        payload.dict(),
+        text_fields=["recruiter_notes"],
+    )
+    application.recruiter_notes = update_data.get("recruiter_notes")
     if payload.is_shortlisted is not None:
         application.is_shortlisted = payload.is_shortlisted
 

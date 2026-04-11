@@ -26,6 +26,7 @@ from app.utils.totp import generate_totp_secret, get_totp_uri, generate_qr_code,
 from app.dependencies import get_current_user, get_current_verified_user
 from app.config import settings
 from app.utils.audit import log_audit_event
+from app.utils.input_sanitization import sanitize_text
 
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
@@ -140,11 +141,18 @@ async def register(
         )
 
     # Create new user
+    full_name = sanitize_text(user_data.full_name, max_length=100)
+    if not full_name:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Full name cannot be empty"
+        )
+
     new_user = User(
         email=user_data.email,
         mobile_number=user_data.mobile_number,
         hashed_password=hash_password(user_data.password),
-        full_name=user_data.full_name,
+        full_name=full_name,
         role=user_data.role,
         is_active=True,
         is_verified=False,

@@ -15,6 +15,7 @@ from app.schemas.user import ProfileUpdate, ProfileResponse, UserWithProfile
 from app.dependencies import get_current_verified_user, get_optional_current_user
 from app.utils.otp import verify_otp
 from app.utils.audit import log_audit_event
+from app.utils.input_sanitization import sanitize_fields
 from app.config import settings
 
 
@@ -166,6 +167,11 @@ async def update_my_profile(
     
     # Update fields that were provided
     update_data = profile_data.dict(exclude_unset=True)
+    update_data = sanitize_fields(
+        update_data,
+        text_fields=["headline", "location", "bio", "education", "experience", "skills"],
+        url_fields=["profile_picture_url"],
+    )
     
     for field, value in update_data.items():
         setattr(profile, field, value)

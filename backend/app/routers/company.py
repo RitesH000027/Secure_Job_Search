@@ -9,6 +9,7 @@ from app.models.user import User
 from app.models.networking import Company, CompanyAdmin
 from app.schemas.networking import CompanyCreate, CompanyUpdate, CompanyResponse
 from app.utils.audit import log_audit_event
+from app.utils.input_sanitization import sanitize_fields
 
 
 router = APIRouter(prefix="/companies", tags=["Company"])
@@ -20,15 +21,24 @@ async def create_company(
     current_user: User = Depends(get_current_recruiter),
     db: Session = Depends(get_db),
 ):
-    existing = db.query(Company).filter(Company.name == payload.name).first()
+    payload_data = sanitize_fields(
+        payload.dict(),
+        text_fields=["name", "description", "location"],
+        url_fields=["website"],
+    )
+
+    if not payload_data.get("name"):
+        raise HTTPException(status_code=400, detail="Company name cannot be empty")
+
+    existing = db.query(Company).filter(Company.name == payload_data["name"]).first()
     if existing:
         raise HTTPException(status_code=400, detail="Company name already exists")
 
     company = Company(
-        name=payload.name,
-        description=payload.description,
-        location=payload.location,
-        website=payload.website,
+        name=payload_data["name"],
+        description=payload_data.get("description"),
+        location=payload_data.get("location"),
+        website=payload_data.get("website"),
         created_by=current_user.id,
     )
     db.add(company)
@@ -103,7 +113,13 @@ async def update_company(
     if not is_admin_member and current_user.role.value != "admin":
         raise HTTPException(status_code=403, detail="Not authorized to update company")
 
-    for field, value in payload.dict(exclude_unset=True).items():
+    update_data = sanitize_fields(
+        payload.dict(exclude_unset=True),
+        text_fields=["description", "location"],
+        url_fields=["website"],
+    )
+
+    for field, value in update_data.items():
         setattr(company, field, value)
 
     log_audit_event(
@@ -112,7 +128,7 @@ async def update_company(
         target_type="company",
         actor_user_id=current_user.id,
         target_id=str(company.id),
-        details=payload.dict(exclude_unset=True),
+        details=update_data,
     )
 
     db.commit()
