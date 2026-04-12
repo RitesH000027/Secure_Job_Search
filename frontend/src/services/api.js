@@ -164,4 +164,8 @@ export const connectionAPI = {
   removeFriend: (friendId) => api.delete(`/connections/friends/${friendId}`),
 };
 
+export const searchAPI = {
+  global: (query, limit = 20) => api.get('/search', { params: { query, limit } }),
+};
+
 export default api;

@@ -207,3 +207,12 @@ class ConversationKeyEnvelopeResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class GlobalSearchResult(BaseModel):
+    result_type: str
+    id: int
+    title: str
+    subtitle: Optional[str] = None
+    description: Optional[str] = None
+    url: str

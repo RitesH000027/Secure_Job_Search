@@ -11,7 +11,7 @@ from sqlalchemy import inspect, text
 from app.config import settings
 from app.database import engine, Base
 from app import models  # noqa: F401
-from app.routers import auth, profile, resume, admin, company, jobs, messaging, connections
+from app.routers import auth, profile, resume, admin, company, jobs, messaging, connections, search
 
 app = FastAPI(
     title=settings.APP_NAME,
@@ -57,6 +57,7 @@ app.include_router(company.router)
 app.include_router(jobs.router)
 app.include_router(messaging.router)
 app.include_router(connections.router)
+app.include_router(search.router)
 
 
 @app.on_event("startup")

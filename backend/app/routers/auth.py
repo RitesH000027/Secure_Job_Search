@@ -7,9 +7,12 @@ import ssl
 import base64
 import urllib.parse
 import urllib.request
+from collections import defaultdict, deque
 from email.message import EmailMessage
 from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
+from fastapi import Request
 from sqlalchemy.orm import Session
+from threading import Lock
 from app.database import get_db
 from app.models.user import User, Profile
 from app.schemas.user import (
@@ -31,6 +34,35 @@ from app.utils.input_sanitization import sanitize_text
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 ALLOWED_HIGH_RISK_ACTIONS = {"resume_download", "resume_delete", "account_delete"}
+LOGIN_RATE_LIMIT_WINDOW = timedelta(hours=1)
+login_attempts_lock = Lock()
+login_attempts_by_key: dict[str, deque[datetime]] = defaultdict(deque)
+
+
+def _get_rate_limit_key(request: Request, email: str) -> str:
+    client_host = request.client.host if request.client else "unknown"
+    return f"{client_host}:{email.strip().lower()}"
+
+
+def _prune_login_attempts(attempts: deque[datetime], now: datetime) -> None:
+    window_start = now - LOGIN_RATE_LIMIT_WINDOW
+    while attempts and attempts[0] < window_start:
+        attempts.popleft()
+
+
+def _check_login_rate_limit(request: Request, email: str) -> None:
+    now = datetime.utcnow()
+    key = _get_rate_limit_key(request, email)
+    with login_attempts_lock:
+        attempts = login_attempts_by_key[key]
+        _prune_login_attempts(attempts, now)
+        if len(attempts) >= settings.LOGIN_RATE_LIMIT_PER_HOUR:
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail=f"Too many login attempts. Try again later.",
+                headers={"Retry-After": str(int(LOGIN_RATE_LIMIT_WINDOW.total_seconds()))},
+            )
+        attempts.append(now)
 
 
 def send_otp_email(email: str, otp: str, purpose: str):
@@ -299,6 +331,7 @@ async def resend_otp(
 @router.post("/login", response_model=Token)
 async def login(
     login_data: UserLogin,
+    request: Request,
     db: Session = Depends(get_db)
 ):
     """
@@ -307,6 +340,8 @@ async def login(
     - Validates credentials
     - Returns access and refresh tokens
     """
+    _check_login_rate_limit(request, login_data.email)
+
     # Find user
     user = db.query(User).filter(User.email == login_data.email).first()
     
