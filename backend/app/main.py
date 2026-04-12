@@ -11,7 +11,7 @@ from sqlalchemy import inspect, text
 from app.config import settings
 from app.database import engine, Base
 from app import models  # noqa: F401
-from app.routers import auth, profile, resume, admin, company, jobs, messaging, connections, search
+from app.routers import auth, profile, resume, admin, company, jobs, messaging, connections, search, feed
 
 app = FastAPI(
     title=settings.APP_NAME,
@@ -48,6 +48,10 @@ PROFILE_PICTURE_DIR = os.path.join(settings.UPLOAD_DIR, "profile_pictures")
 os.makedirs(PROFILE_PICTURE_DIR, exist_ok=True)
 app.mount("/profile-pictures", StaticFiles(directory=PROFILE_PICTURE_DIR), name="profile-pictures")
 
+POST_IMAGE_DIR = os.path.join(settings.UPLOAD_DIR, "post_images")
+os.makedirs(POST_IMAGE_DIR, exist_ok=True)
+app.mount("/post-images", StaticFiles(directory=POST_IMAGE_DIR), name="post-images")
+
 # Include routers
 app.include_router(auth.router)
 app.include_router(profile.router)
@@ -58,6 +62,7 @@ app.include_router(jobs.router)
 app.include_router(messaging.router)
 app.include_router(connections.router)
 app.include_router(search.router)
+app.include_router(feed.router)
 
 
 @app.on_event("startup")

@@ -20,6 +20,9 @@ from app.models.networking import (
 	UserEncryptionKey,
 	ConversationKeyEnvelope,
 	GroupJoinRequest,
+	UserPost,
+	PostLike,
+	PostComment,
 )
 
 __all__ = [
@@ -47,4 +50,7 @@ __all__ = [
 	"UserEncryptionKey",
 	"ConversationKeyEnvelope",
 	"GroupJoinRequest",
+	"UserPost",
+	"PostLike",
+	"PostComment",
 ]

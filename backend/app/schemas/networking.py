@@ -253,3 +253,56 @@ class GroupJoinRequestResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class UserPostResponse(BaseModel):
+    id: int
+    author_id: int
+    author_name: str
+    content: str
+    image_url: Optional[str]
+    like_count: int = 0
+    comment_count: int = 0
+    is_liked_by_me: bool = False
+    comments: list["PostCommentResponse"] = Field(default_factory=list)
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+
+
+class CompanyJobFeedResponse(BaseModel):
+    id: int
+    company_id: int
+    company_name: str
+    title: str
+    description: str
+    location: Optional[str]
+    work_mode: WorkMode
+    employment_type: EmploymentType
+    created_at: datetime
+
+
+class HomeFeedResponse(BaseModel):
+    friend_posts: list[UserPostResponse]
+    company_jobs: list[CompanyJobFeedResponse]
+    next_post_offset: int
+    next_job_offset: int
+    has_more_posts: bool
+    has_more_jobs: bool
+
+
+class PostUpdateRequest(BaseModel):
+    content: str = Field(..., min_length=1, max_length=5000)
+
+
+class PostCommentCreate(BaseModel):
+    content: str = Field(..., min_length=1, max_length=1000)
+
+
+class PostCommentResponse(BaseModel):
+    id: int
+    post_id: int
+    user_id: int
+    user_name: str
+    content: str
+    created_at: datetime
+    updated_at: Optional[datetime] = None

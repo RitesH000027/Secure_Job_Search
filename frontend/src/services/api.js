@@ -176,4 +176,22 @@ export const searchAPI = {
   global: (query, limit = 20) => api.get('/search', { params: { query, limit } }),
 };
 
+export const feedAPI = {
+  getHomeFeed: (params = {}) => api.get('/feed/home', { params }),
+  createPost: (content, imageFile) => {
+    const formData = new FormData();
+    formData.append('content', content || '');
+    if (imageFile) {
+      formData.append('image', imageFile);
+    }
+    return api.post('/feed/posts', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  },
+  updatePost: (postId, content) => api.patch(`/feed/posts/${postId}`, { content }),
+  deletePost: (postId) => api.delete(`/feed/posts/${postId}`),
+  togglePostLike: (postId) => api.post(`/feed/posts/${postId}/likes/toggle`),
+  addPostComment: (postId, content) => api.post(`/feed/posts/${postId}/comments`, { content }),
+};
+
 export default api;
