@@ -354,62 +354,6 @@ const Dashboard = () => {
         )}
       </div>
 
-      <div className="li-card p-4 sm:p-6">
-        <h2 className="text-lg sm:text-xl font-semibold text-gray-900 mb-3 sm:mb-4">Quick actions</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
-          <Link
-            to="/profile"
-            className="border border-gray-200 rounded-xl p-3 sm:p-4 hover:bg-gray-50 hover:border-gray-300 transition-colors"
-          >
-            <h3 className="font-semibold text-gray-900">Edit Profile</h3>
-            <p className="text-sm text-gray-600 mt-1">Keep your headline, location, and bio updated.</p>
-          </Link>
-
-          <Link
-            to="/resume"
-            className="border border-gray-200 rounded-xl p-3 sm:p-4 hover:bg-gray-50 hover:border-gray-300 transition-colors"
-          >
-            <h3 className="font-semibold text-gray-900">Manage Resume</h3>
-            <p className="text-sm text-gray-600 mt-1">Upload encrypted CVs and control visibility.</p>
-          </Link>
-
-          <Link
-            to="/jobs"
-            className="border border-gray-200 rounded-xl p-3 sm:p-4 hover:bg-gray-50 hover:border-gray-300 transition-colors"
-          >
-            <h3 className="font-semibold text-gray-900">Jobs & Applications</h3>
-            <p className="text-sm text-gray-600 mt-1">Discover roles and track application pipeline.</p>
-          </Link>
-
-          <Link
-            to="/companies"
-            className="border border-gray-200 rounded-xl p-3 sm:p-4 hover:bg-gray-50 hover:border-gray-300 transition-colors"
-          >
-            <h3 className="font-semibold text-gray-900">Companies</h3>
-            <p className="text-sm text-gray-600 mt-1">View all companies and manage your organization profiles.</p>
-          </Link>
-
-          <Link
-            to="/messages"
-            className="border border-gray-200 rounded-xl p-3 sm:p-4 hover:bg-gray-50 hover:border-gray-300 transition-colors"
-          >
-            <h3 className="font-semibold text-gray-900">Secure Messaging</h3>
-            <p className="text-sm text-gray-600 mt-1">Continue candidate-recruiter conversations.</p>
-          </Link>
-        </div>
-      </div>
-
-      <div className="li-card p-4 sm:p-6">
-        <h2 className="text-lg sm:text-xl font-semibold text-gray-900">Profile completion snapshot</h2>
-        <div className="mt-4 flex items-center justify-between text-sm">
-          <span className="text-gray-600">Verification status</span>
-          <span className="font-semibold text-green-700">{user?.is_verified ? 'Verified' : 'Pending'}</span>
-        </div>
-        <div className="mt-2 flex items-center justify-between text-sm">
-          <span className="text-gray-600">Role</span>
-          <span className="font-semibold capitalize">{user?.role}</span>
-        </div>
-      </div>
     </div>
   );
 };

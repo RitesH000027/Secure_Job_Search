@@ -240,6 +240,20 @@ const Profile = () => {
       {error && <div className="li-card border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
       {success && <div className="li-card border-green-200 bg-green-50 p-3 text-sm text-green-700">{success}</div>}
 
+      <div className="li-card p-6">
+        <h2 className="text-lg sm:text-xl font-semibold text-gray-900">Profile completion snapshot</h2>
+        <div className="mt-4 flex items-center justify-between text-sm">
+          <span className="text-gray-600">Verification status</span>
+          <span className={`font-semibold ${profileData?.is_verified ? 'text-green-700' : 'text-amber-700'}`}>
+            {profileData?.is_verified ? 'Verified' : 'Pending'}
+          </span>
+        </div>
+        <div className="mt-2 flex items-center justify-between text-sm">
+          <span className="text-gray-600">Role</span>
+          <span className="font-semibold capitalize">{profileData?.role || '-'}</span>
+        </div>
+      </div>
+
       {!editing ? (
         <div className="li-card p-6 space-y-6">
           {profile.profile_picture_url && (
