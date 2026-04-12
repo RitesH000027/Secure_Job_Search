@@ -199,14 +199,31 @@ const Messages = () => {
 
   useEffect(() => {
     if (!searchQuery.trim()) {
-      setSearchResults([]);
+      setSearchResults(
+        friends.map((friend) => ({
+          ...friend,
+          connection_status: 'connected',
+        }))
+      );
       return;
     }
     const timeout = setTimeout(() => {
       searchUsers(searchQuery.trim());
     }, 300);
     return () => clearTimeout(timeout);
-  }, [searchQuery]);
+  }, [searchQuery, friends]);
+
+  const showExistingConnections = () => {
+    if (searchQuery.trim()) {
+      return;
+    }
+    setSearchResults(
+      friends.map((friend) => ({
+        ...friend,
+        connection_status: 'connected',
+      }))
+    );
+  };
 
   const friendMap = useMemo(
     () =>
@@ -772,6 +789,7 @@ const Messages = () => {
               placeholder="Search by name or email"
               value={searchQuery}
               onChange={(event) => setSearchQuery(event.target.value)}
+              onFocus={showExistingConnections}
             />
             {searchResults.length > 0 && (
               <div className="max-h-44 overflow-y-auto space-y-2">
