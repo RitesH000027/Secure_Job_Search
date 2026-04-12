@@ -134,6 +134,7 @@ const Messages = () => {
   const { user } = useAuth();
   const [searchParams] = useSearchParams();
   const webCryptoAvailable = canUseWebCrypto();
+  const MESSAGE_POLL_INTERVAL_MS = 2500;
 
   const [friends, setFriends] = useState([]);
   const [receivedRequests, setReceivedRequests] = useState([]);
@@ -298,18 +299,54 @@ const Messages = () => {
     }
   };
 
-  const loadMessages = async (conversationId) => {
+  const loadMessages = async (conversationId, options = {}) => {
+    const { silent = false } = options;
+
     try {
-      setLoadingMessages(true);
+      if (!silent) {
+        setLoadingMessages(true);
+      }
       const response = await messageAPI.listMessages(conversationId);
       setMessages(response.data || []);
     } catch (err) {
-      setError(getApiErrorMessage(err, 'Failed to load messages'));
-      setMessages([]);
+      if (!silent) {
+        setError(getApiErrorMessage(err, 'Failed to load messages'));
+        setMessages([]);
+      }
     } finally {
-      setLoadingMessages(false);
+      if (!silent) {
+        setLoadingMessages(false);
+      }
     }
   };
+
+  useEffect(() => {
+    if (!activeConversationId) {
+      return;
+    }
+
+    let cancelled = false;
+    let inFlight = false;
+
+    const poll = async () => {
+      if (cancelled || inFlight) {
+        return;
+      }
+
+      inFlight = true;
+      try {
+        await loadMessages(activeConversationId, { silent: true });
+      } finally {
+        inFlight = false;
+      }
+    };
+
+    const intervalId = setInterval(poll, MESSAGE_POLL_INTERVAL_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(intervalId);
+    };
+  }, [activeConversationId]);
 
   const initializeConversationKeyForParticipants = async (conversation) => {
     const participantIds = [...new Set(conversation.participant_ids || [])];
