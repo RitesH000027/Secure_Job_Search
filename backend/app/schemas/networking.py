@@ -216,3 +216,4 @@ class GlobalSearchResult(BaseModel):
     subtitle: Optional[str] = None
     description: Optional[str] = None
     url: str
+    connection_status: Optional[str] = None

@@ -84,6 +84,11 @@ const Layout = () => {
     setSearchText('');
     setSearchSuggestions([]);
     setSearchOpen(false);
+    if (suggestion.result_type === 'person' && suggestion.connection_status !== 'connected') {
+      navigate(`/messages?q=${encodeURIComponent(suggestion.title)}`);
+      return;
+    }
+
     navigate(suggestion.url);
   };
 
@@ -140,7 +145,9 @@ const Layout = () => {
                                 <p className="text-sm font-semibold text-gray-900">{item.title}</p>
                                 <p className="text-xs text-gray-500 mt-1">{item.subtitle}</p>
                               </div>
-                              <span className="text-[10px] uppercase tracking-wide text-gray-400">{item.result_type}</span>
+                              <span className="text-[10px] uppercase tracking-wide text-gray-400">
+                                {item.result_type === 'person' && item.connection_status !== 'connected' ? 'add friend' : item.result_type}
+                              </span>
                             </div>
                             {item.description && <p className="text-xs text-gray-600 mt-1 line-clamp-2">{item.description}</p>}
                           </button>

@@ -2,17 +2,42 @@
 Global search endpoints for people, companies, and jobs.
 """
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import or_
+from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.dependencies import get_current_verified_user
 from app.models.user import User, Profile
-from app.models.networking import Company, JobPosting
+from app.models.networking import Company, JobPosting, ConnectionRequest, ConnectionRequestStatus
 from app.schemas.networking import GlobalSearchResult
 
 
 router = APIRouter(prefix="/search", tags=["Search"])
+
+
+def _relationship_status(db: Session, current_user_id: int, other_user_id: int) -> str:
+	existing = (
+		db.query(ConnectionRequest)
+		.filter(
+			or_(
+				and_(ConnectionRequest.requester_id == current_user_id, ConnectionRequest.recipient_id == other_user_id),
+				and_(ConnectionRequest.requester_id == other_user_id, ConnectionRequest.recipient_id == current_user_id),
+			)
+		)
+		.order_by(ConnectionRequest.updated_at.desc())
+		.first()
+	)
+
+	if not existing:
+		return "none"
+
+	if existing.status == ConnectionRequestStatus.ACCEPTED:
+		return "connected"
+
+	if existing.status == ConnectionRequestStatus.PENDING:
+		return "pending_sent" if existing.requester_id == current_user_id else "pending_received"
+
+	return "none"
 
 
 @router.get("", response_model=list[GlobalSearchResult])
@@ -40,7 +65,9 @@ async def global_search(
 	if users:
 		profile_map = {profile.user_id: profile for profile in db.query(Profile).filter(Profile.user_id.in_([user.id for user in users])).all()}
 		for user in users:
+			relationship_status = _relationship_status(db, current_user.id, user.id)
 			profile = profile_map.get(user.id)
+			person_url = f"/messages?user={user.id}" if relationship_status == "connected" else f"/messages?q={(user.full_name or user.email)}"
 			results.append(
 				GlobalSearchResult(
 					result_type="person",
@@ -48,7 +75,8 @@ async def global_search(
 					title=user.full_name or user.email,
 					subtitle=user.role.value,
 					description=profile.headline if profile and profile.headline else None,
-					url=f"/messages?user={user.id}",
+					url=person_url,
+					connection_status=relationship_status,
 				)
 			)
 

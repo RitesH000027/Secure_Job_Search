@@ -168,6 +168,13 @@ const Messages = () => {
   }, []);
 
   useEffect(() => {
+    const queryParam = searchParams.get('q');
+    if (queryParam && queryParam !== searchQuery) {
+      setSearchQuery(queryParam);
+    }
+  }, [searchParams, searchQuery]);
+
+  useEffect(() => {
     const userIdParam = searchParams.get('user');
     if (!userIdParam) {
       return;
