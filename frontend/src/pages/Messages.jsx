@@ -152,6 +152,11 @@ const Messages = () => {
 
   const [groupName, setGroupName] = useState('');
   const [groupMemberIds, setGroupMemberIds] = useState([]);
+  const [groupRename, setGroupRename] = useState('');
+  const [selectedGroupMemberId, setSelectedGroupMemberId] = useState('');
+  const [groupSearchQuery, setGroupSearchQuery] = useState('');
+  const [groupSearchResults, setGroupSearchResults] = useState([]);
+  const [groupJoinRequests, setGroupJoinRequests] = useState([]);
 
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [sending, setSending] = useState(false);
@@ -231,7 +236,41 @@ const Messages = () => {
     [conversations]
   );
 
+  const activeConversation = useMemo(
+    () => conversations.find((item) => item.id === activeConversationId) || null,
+    [conversations, activeConversationId]
+  );
+
+  const isActiveGroupAdmin = Boolean(activeConversation?.is_group && activeConversation?.created_by === user?.id);
+
+  const availableFriendsForGroup = useMemo(() => {
+    if (!activeConversation?.is_group) {
+      return [];
+    }
+
+    const participantIds = new Set(activeConversation.participant_ids || []);
+    return friends.filter((friend) => !participantIds.has(friend.id));
+  }, [activeConversation, friends]);
+
   const getActiveConversation = () => conversations.find((item) => item.id === activeConversationId) || null;
+
+  useEffect(() => {
+    if (!groupSearchQuery.trim()) {
+      setGroupSearchResults([]);
+      return;
+    }
+
+    const timeout = setTimeout(async () => {
+      try {
+        const response = await messageAPI.searchGroups(groupSearchQuery.trim(), 20);
+        setGroupSearchResults(response.data || []);
+      } catch {
+        setGroupSearchResults([]);
+      }
+    }, 250);
+
+    return () => clearTimeout(timeout);
+  }, [groupSearchQuery]);
 
   const initializeEncryption = async () => {
     if (!webCryptoAvailable) {
@@ -515,10 +554,119 @@ const Messages = () => {
       setActiveConversationId(conversation.id);
       setActiveConversationTitle(conversation.name || `Group #${conversation.id}`);
       setActiveConversationSubtitle(`${(conversation.participant_ids || []).length} participants`);
+      setGroupRename(conversation.name || '');
       await prepareConversation(conversation);
+      if (conversation.created_by === user?.id) {
+        const requestsResponse = await messageAPI.listGroupJoinRequests(conversation.id);
+        setGroupJoinRequests(requestsResponse.data || []);
+      } else {
+        setGroupJoinRequests([]);
+      }
     } catch (err) {
       setError(getApiErrorMessage(err, err?.message || 'Failed to open encrypted group conversation'));
       setMessages([]);
+    }
+  };
+
+  const handleRenameGroup = async () => {
+    if (!activeConversation?.is_group || !groupRename.trim()) {
+      return;
+    }
+
+    try {
+      setError('');
+      const response = await messageAPI.renameGroup(activeConversation.id, groupRename.trim());
+      setConversations((previous) => previous.map((item) => (item.id === response.data.id ? response.data : item)));
+      setActiveConversationTitle(response.data.name || `Group #${response.data.id}`);
+      setActiveConversationSubtitle(`${(response.data.participant_ids || []).length} participants`);
+      setSuccess('Group name updated');
+    } catch (err) {
+      setError(getApiErrorMessage(err, 'Failed to rename group'));
+    }
+  };
+
+  const handleAddGroupMember = async () => {
+    if (!activeConversation?.is_group || !selectedGroupMemberId) {
+      return;
+    }
+
+    try {
+      setError('');
+      const response = await messageAPI.addGroupMember(activeConversation.id, Number(selectedGroupMemberId));
+      setConversations((previous) => previous.map((item) => (item.id === response.data.id ? response.data : item)));
+      setSelectedGroupMemberId('');
+      setActiveConversationSubtitle(`${(response.data.participant_ids || []).length} participants`);
+      setSuccess('Member added to group');
+      if (isActiveGroupAdmin) {
+        const requestsResponse = await messageAPI.listGroupJoinRequests(activeConversation.id);
+        setGroupJoinRequests(requestsResponse.data || []);
+      }
+    } catch (err) {
+      setError(getApiErrorMessage(err, 'Failed to add member'));
+    }
+  };
+
+  const handleRemoveGroupMember = async (memberId) => {
+    if (!activeConversation?.is_group) {
+      return;
+    }
+
+    try {
+      setError('');
+      const response = await messageAPI.removeGroupMember(activeConversation.id, memberId);
+      setConversations((previous) => previous.map((item) => (item.id === response.data.id ? response.data : item)));
+      setActiveConversationSubtitle(`${(response.data.participant_ids || []).length} participants`);
+      setSuccess('Member removed from group');
+    } catch (err) {
+      setError(getApiErrorMessage(err, 'Failed to remove member'));
+    }
+  };
+
+  const handleRequestJoinGroup = async (conversationId) => {
+    try {
+      setError('');
+      await messageAPI.requestJoinGroup(conversationId);
+      setSuccess('Join request sent to group admin');
+      if (groupSearchQuery.trim()) {
+        const response = await messageAPI.searchGroups(groupSearchQuery.trim(), 20);
+        setGroupSearchResults(response.data || []);
+      }
+    } catch (err) {
+      setError(getApiErrorMessage(err, 'Failed to request group join'));
+    }
+  };
+
+  const handleApproveGroupJoinRequest = async (requestId) => {
+    if (!activeConversation?.is_group) {
+      return;
+    }
+
+    try {
+      setError('');
+      const response = await messageAPI.approveGroupJoinRequest(activeConversation.id, requestId);
+      setConversations((previous) => previous.map((item) => (item.id === response.data.id ? response.data : item)));
+      const requestsResponse = await messageAPI.listGroupJoinRequests(activeConversation.id);
+      setGroupJoinRequests(requestsResponse.data || []);
+      setActiveConversationSubtitle(`${(response.data.participant_ids || []).length} participants`);
+      setSuccess('Join request approved');
+    } catch (err) {
+      setError(getApiErrorMessage(err, 'Failed to approve join request'));
+    }
+  };
+
+  const handleRejectGroupJoinRequest = async (requestId) => {
+    if (!activeConversation?.is_group) {
+      return;
+    }
+
+    try {
+      setError('');
+      await messageAPI.rejectGroupJoinRequest(activeConversation.id, requestId);
+      const requestsResponse = await messageAPI.listGroupJoinRequests(activeConversation.id);
+      setGroupJoinRequests(requestsResponse.data || []);
+      setSuccess('Join request rejected');
+    } catch (err) {
+      setError(getApiErrorMessage(err, 'Failed to reject join request'));
     }
   };
 
@@ -696,6 +844,48 @@ const Messages = () => {
             <button type="submit" className="li-btn-primary !py-1.5 !px-3" disabled={friends.length === 0}>Create Group Chat</button>
           </form>
 
+          <div className="p-4 border-b border-gray-200 space-y-2">
+            <p className="text-sm font-semibold text-gray-900">Find Groups</p>
+            <input
+              className="li-input"
+              placeholder="Search group name"
+              value={groupSearchQuery}
+              onChange={(event) => setGroupSearchQuery(event.target.value)}
+            />
+            {groupSearchResults.length > 0 && (
+              <div className="max-h-44 overflow-y-auto space-y-2">
+                {groupSearchResults.map((group) => (
+                  <div key={group.id} className="rounded-lg border border-gray-200 p-2 flex items-center justify-between gap-2">
+                    <div>
+                      <p className="text-sm font-medium text-gray-900">{group.name}</p>
+                      <p className="text-xs text-gray-500">{group.participant_count} participants</p>
+                    </div>
+                    {group.is_member ? (
+                      <button
+                        type="button"
+                        className="li-btn-secondary !py-1 !px-3"
+                        onClick={() => {
+                          const conversation = conversations.find((item) => item.id === group.id);
+                          if (conversation) {
+                            openGroupConversation(conversation);
+                          }
+                        }}
+                      >
+                        Open
+                      </button>
+                    ) : group.has_pending_request ? (
+                      <span className="text-xs text-gray-500">Pending</span>
+                    ) : (
+                      <button type="button" className="li-btn-primary !py-1 !px-3" onClick={() => handleRequestJoinGroup(group.id)}>
+                        Request
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
           <div className="p-4 border-b border-gray-200">
             <p className="text-sm font-semibold text-gray-900 mb-2">Friends</p>
             {friends.length === 0 ? (
@@ -751,6 +941,93 @@ const Messages = () => {
           <div className="px-4 py-3 border-b border-gray-200 bg-white">
             <p className="text-sm font-semibold text-gray-900">{activeConversationTitle || 'Select a friend or group to chat'}</p>
             <p className="text-xs text-gray-500">{activeConversationSubtitle || 'Only connected friends can be messaged'}</p>
+            {activeConversation?.is_group && (
+              <div className="mt-3 space-y-2 rounded-lg border border-gray-200 p-3 bg-[#fafbfc]">
+                <p className="text-xs font-semibold text-gray-800">
+                  {isActiveGroupAdmin ? 'Group admin controls' : 'Group details'}
+                </p>
+
+                {isActiveGroupAdmin && (
+                  <div className="flex flex-col md:flex-row gap-2">
+                    <input
+                      className="li-input md:flex-1"
+                      placeholder="Edit group name"
+                      value={groupRename}
+                      onChange={(event) => setGroupRename(event.target.value)}
+                    />
+                    <button type="button" className="li-btn-secondary" onClick={handleRenameGroup}>Save Name</button>
+                  </div>
+                )}
+
+                {isActiveGroupAdmin && (
+                  <div className="flex flex-col md:flex-row gap-2">
+                    <select
+                      className="li-input md:flex-1"
+                      value={selectedGroupMemberId}
+                      onChange={(event) => setSelectedGroupMemberId(event.target.value)}
+                    >
+                      <option value="">Add friend to group</option>
+                      {availableFriendsForGroup.map((friend) => (
+                        <option key={friend.id} value={friend.id}>{friend.full_name}</option>
+                      ))}
+                    </select>
+                    <button type="button" className="li-btn-primary" onClick={handleAddGroupMember} disabled={!selectedGroupMemberId}>
+                      Add Member
+                    </button>
+                  </div>
+                )}
+
+                <div className="space-y-1">
+                  <p className="text-xs text-gray-600">Members</p>
+                  <div className="flex flex-wrap gap-2">
+                    {(activeConversation.participant_ids || []).map((memberId) => {
+                      const member = memberId === user?.id ? user : friendMap[memberId];
+                      const memberName = member?.full_name || `User #${memberId}`;
+                      const isAdminMember = activeConversation.created_by === memberId;
+                      return (
+                        <div key={memberId} className="rounded-full bg-white border border-gray-200 px-3 py-1 text-xs text-gray-700 flex items-center gap-2">
+                          <span>{memberName}{isAdminMember ? ' (admin)' : ''}</span>
+                          {isActiveGroupAdmin && !isAdminMember && (
+                            <button
+                              type="button"
+                              className="text-red-600 hover:underline"
+                              onClick={() => handleRemoveGroupMember(memberId)}
+                            >
+                              Remove
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {isActiveGroupAdmin && (
+                  <div className="space-y-1">
+                    <p className="text-xs text-gray-600">Join requests</p>
+                    {groupJoinRequests.length === 0 ? (
+                      <p className="text-xs text-gray-500">No pending join requests</p>
+                    ) : (
+                      <div className="space-y-1">
+                        {groupJoinRequests.map((request) => (
+                          <div key={request.id} className="rounded-lg border border-gray-200 bg-white px-3 py-2 flex items-center justify-between gap-2">
+                            <span className="text-xs text-gray-700">{request.requester_name}</span>
+                            <div className="flex gap-1">
+                              <button type="button" className="li-btn-primary !py-1 !px-2" onClick={() => handleApproveGroupJoinRequest(request.id)}>
+                                Approve
+                              </button>
+                              <button type="button" className="li-btn-secondary !py-1 !px-2" onClick={() => handleRejectGroupJoinRequest(request.id)}>
+                                Reject
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           <div className="flex-1 p-4 bg-[#f7f9fb] overflow-y-auto space-y-3">

@@ -3,7 +3,7 @@ Encrypted messaging endpoints for one-to-one and group chats.
 """
 from datetime import datetime
 from typing import cast
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session
 from app.database import get_db
@@ -17,6 +17,8 @@ from app.models.networking import (
     ConnectionRequestStatus,
     UserEncryptionKey,
     ConversationKeyEnvelope,
+    GroupJoinRequest,
+    GroupJoinRequestStatus,
 )
 from app.schemas.networking import (
     ConversationCreate,
@@ -27,6 +29,10 @@ from app.schemas.networking import (
     UserEncryptionKeyResponse,
     ConversationKeyEnvelopeBatchCreate,
     ConversationKeyEnvelopeResponse,
+    GroupConversationRename,
+    GroupParticipantManage,
+    GroupJoinRequestResponse,
+    GroupSearchResult,
 )
 from app.utils.audit import log_audit_event
 from app.utils.input_sanitization import sanitize_text
@@ -60,6 +66,14 @@ def _is_connected_friend(db: Session, user_id_a: int, user_id_b: int) -> bool:
         .first()
         is not None
     )
+
+
+def _require_group_admin(conversation: Conversation, user_id: int) -> None:
+    if not conversation.is_group:
+        raise HTTPException(status_code=400, detail="This action is only for group conversations")
+
+    if conversation.created_by != user_id:
+        raise HTTPException(status_code=403, detail="Only the group admin can perform this action")
 
 
 @router.post("/conversations", response_model=ConversationResponse, status_code=status.HTTP_201_CREATED)
@@ -342,3 +356,370 @@ async def get_my_conversation_key_envelope(
         user_id=int(cast(int, envelope.user_id)),
         encrypted_key=str(cast(str, envelope.encrypted_key)),
     )
+
+
+@router.patch("/conversations/{conversation_id}/name", response_model=ConversationResponse)
+async def rename_group_conversation(
+    conversation_id: int,
+    payload: GroupConversationRename,
+    current_user: User = Depends(get_current_verified_user),
+    db: Session = Depends(get_db),
+):
+    conversation = db.query(Conversation).filter(Conversation.id == conversation_id).first()
+    if not conversation:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+
+    current_user_id = int(cast(int, current_user.id))
+    if not _is_participant(db, conversation_id, current_user_id):
+        raise HTTPException(status_code=403, detail="Not a participant in this conversation")
+
+    _require_group_admin(conversation, current_user_id)
+
+    new_name = sanitize_text(payload.name, max_length=255)
+    if not new_name:
+        raise HTTPException(status_code=400, detail="Group name cannot be empty")
+
+    conversation.name = new_name
+    db.commit()
+
+    members = (
+        db.query(ConversationParticipant)
+        .filter(ConversationParticipant.conversation_id == conversation.id)
+        .all()
+    )
+    return ConversationResponse(
+        id=int(cast(int, conversation.id)),
+        name=cast(str | None, conversation.name),
+        is_group=bool(cast(bool, conversation.is_group)),
+        created_by=cast(int | None, conversation.created_by),
+        created_at=cast(datetime, conversation.created_at),
+        participant_ids=[int(cast(int, m.user_id)) for m in members],
+    )
+
+
+@router.post("/conversations/{conversation_id}/participants", response_model=ConversationResponse)
+async def add_group_participant(
+    conversation_id: int,
+    payload: GroupParticipantManage,
+    current_user: User = Depends(get_current_verified_user),
+    db: Session = Depends(get_db),
+):
+    conversation = db.query(Conversation).filter(Conversation.id == conversation_id).first()
+    if not conversation:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+
+    current_user_id = int(cast(int, current_user.id))
+    if not _is_participant(db, conversation_id, current_user_id):
+        raise HTTPException(status_code=403, detail="Not a participant in this conversation")
+
+    _require_group_admin(conversation, current_user_id)
+
+    target_user = db.query(User).filter(User.id == payload.user_id).first()
+    if not target_user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    exists = (
+        db.query(ConversationParticipant)
+        .filter(
+            ConversationParticipant.conversation_id == conversation_id,
+            ConversationParticipant.user_id == payload.user_id,
+        )
+        .first()
+    )
+    if exists:
+        raise HTTPException(status_code=400, detail="User is already in the group")
+
+    db.add(ConversationParticipant(conversation_id=conversation_id, user_id=payload.user_id))
+
+    pending_request = (
+        db.query(GroupJoinRequest)
+        .filter(
+            GroupJoinRequest.conversation_id == conversation_id,
+            GroupJoinRequest.requester_id == payload.user_id,
+            GroupJoinRequest.status == GroupJoinRequestStatus.PENDING,
+        )
+        .first()
+    )
+    if pending_request:
+        pending_request.status = GroupJoinRequestStatus.ACCEPTED
+
+    db.commit()
+
+    members = (
+        db.query(ConversationParticipant)
+        .filter(ConversationParticipant.conversation_id == conversation.id)
+        .all()
+    )
+    return ConversationResponse(
+        id=int(cast(int, conversation.id)),
+        name=cast(str | None, conversation.name),
+        is_group=bool(cast(bool, conversation.is_group)),
+        created_by=cast(int | None, conversation.created_by),
+        created_at=cast(datetime, conversation.created_at),
+        participant_ids=[int(cast(int, m.user_id)) for m in members],
+    )
+
+
+@router.delete("/conversations/{conversation_id}/participants/{user_id}", response_model=ConversationResponse)
+async def remove_group_participant(
+    conversation_id: int,
+    user_id: int,
+    current_user: User = Depends(get_current_verified_user),
+    db: Session = Depends(get_db),
+):
+    conversation = db.query(Conversation).filter(Conversation.id == conversation_id).first()
+    if not conversation:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+
+    current_user_id = int(cast(int, current_user.id))
+    if not _is_participant(db, conversation_id, current_user_id):
+        raise HTTPException(status_code=403, detail="Not a participant in this conversation")
+
+    _require_group_admin(conversation, current_user_id)
+
+    if conversation.created_by == user_id:
+        raise HTTPException(status_code=400, detail="Group admin cannot be removed")
+
+    member = (
+        db.query(ConversationParticipant)
+        .filter(
+            ConversationParticipant.conversation_id == conversation_id,
+            ConversationParticipant.user_id == user_id,
+        )
+        .first()
+    )
+    if not member:
+        raise HTTPException(status_code=404, detail="User is not in this group")
+
+    db.delete(member)
+    db.commit()
+
+    members = (
+        db.query(ConversationParticipant)
+        .filter(ConversationParticipant.conversation_id == conversation.id)
+        .all()
+    )
+    return ConversationResponse(
+        id=int(cast(int, conversation.id)),
+        name=cast(str | None, conversation.name),
+        is_group=bool(cast(bool, conversation.is_group)),
+        created_by=cast(int | None, conversation.created_by),
+        created_at=cast(datetime, conversation.created_at),
+        participant_ids=[int(cast(int, m.user_id)) for m in members],
+    )
+
+
+@router.get("/groups/search", response_model=list[GroupSearchResult])
+async def search_groups(
+    query: str = Query("", min_length=1, max_length=100),
+    limit: int = Query(20, ge=1, le=50),
+    current_user: User = Depends(get_current_verified_user),
+    db: Session = Depends(get_db),
+):
+    search_term = query.strip()
+    if not search_term:
+        return []
+
+    groups = (
+        db.query(Conversation)
+        .filter(Conversation.is_group == True, Conversation.name.isnot(None), Conversation.name.ilike(f"%{search_term}%"))
+        .order_by(Conversation.updated_at.desc())
+        .limit(limit)
+        .all()
+    )
+
+    current_user_id = int(cast(int, current_user.id))
+    response: list[GroupSearchResult] = []
+    for group in groups:
+        participant_rows = (
+            db.query(ConversationParticipant)
+            .filter(ConversationParticipant.conversation_id == group.id)
+            .all()
+        )
+        participant_ids = {int(cast(int, row.user_id)) for row in participant_rows}
+        has_pending = (
+            db.query(GroupJoinRequest)
+            .filter(
+                GroupJoinRequest.conversation_id == group.id,
+                GroupJoinRequest.requester_id == current_user_id,
+                GroupJoinRequest.status == GroupJoinRequestStatus.PENDING,
+            )
+            .first()
+            is not None
+        )
+        response.append(
+            GroupSearchResult(
+                id=int(cast(int, group.id)),
+                name=cast(str, group.name),
+                participant_count=len(participant_ids),
+                is_member=current_user_id in participant_ids,
+                has_pending_request=has_pending,
+            )
+        )
+
+    return response
+
+
+@router.post("/groups/{conversation_id}/join-requests", response_model=GroupJoinRequestResponse, status_code=status.HTTP_201_CREATED)
+async def request_join_group(
+    conversation_id: int,
+    current_user: User = Depends(get_current_verified_user),
+    db: Session = Depends(get_db),
+):
+    conversation = db.query(Conversation).filter(Conversation.id == conversation_id, Conversation.is_group == True).first()
+    if not conversation:
+        raise HTTPException(status_code=404, detail="Group not found")
+
+    current_user_id = int(cast(int, current_user.id))
+    if _is_participant(db, conversation_id, current_user_id):
+        raise HTTPException(status_code=400, detail="You are already a member of this group")
+
+    existing_pending = (
+        db.query(GroupJoinRequest)
+        .filter(
+            GroupJoinRequest.conversation_id == conversation_id,
+            GroupJoinRequest.requester_id == current_user_id,
+            GroupJoinRequest.status == GroupJoinRequestStatus.PENDING,
+        )
+        .first()
+    )
+    if existing_pending:
+        raise HTTPException(status_code=400, detail="Join request already pending")
+
+    request_row = GroupJoinRequest(
+        conversation_id=conversation_id,
+        requester_id=current_user_id,
+        status=GroupJoinRequestStatus.PENDING,
+    )
+    db.add(request_row)
+    db.commit()
+    db.refresh(request_row)
+
+    return GroupJoinRequestResponse(
+        id=int(cast(int, request_row.id)),
+        conversation_id=int(cast(int, request_row.conversation_id)),
+        requester_id=int(cast(int, request_row.requester_id)),
+        requester_name=current_user.full_name or current_user.email,
+        status=cast(GroupJoinRequestStatus, request_row.status),
+        created_at=cast(datetime, request_row.created_at),
+    )
+
+
+@router.get("/conversations/{conversation_id}/join-requests", response_model=list[GroupJoinRequestResponse])
+async def list_group_join_requests(
+    conversation_id: int,
+    current_user: User = Depends(get_current_verified_user),
+    db: Session = Depends(get_db),
+):
+    conversation = db.query(Conversation).filter(Conversation.id == conversation_id).first()
+    if not conversation:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+
+    current_user_id = int(cast(int, current_user.id))
+    _require_group_admin(conversation, current_user_id)
+
+    requests = (
+        db.query(GroupJoinRequest)
+        .filter(
+            GroupJoinRequest.conversation_id == conversation_id,
+            GroupJoinRequest.status == GroupJoinRequestStatus.PENDING,
+        )
+        .order_by(GroupJoinRequest.created_at.asc())
+        .all()
+    )
+
+    requester_ids = [int(cast(int, item.requester_id)) for item in requests]
+    requester_map = {
+        int(cast(int, user.id)): user
+        for user in db.query(User).filter(User.id.in_(requester_ids)).all()
+    } if requester_ids else {}
+
+    return [
+        GroupJoinRequestResponse(
+            id=int(cast(int, item.id)),
+            conversation_id=int(cast(int, item.conversation_id)),
+            requester_id=int(cast(int, item.requester_id)),
+            requester_name=(requester_map.get(int(cast(int, item.requester_id))).full_name or requester_map.get(int(cast(int, item.requester_id))).email) if requester_map.get(int(cast(int, item.requester_id))) else f"User #{int(cast(int, item.requester_id))}",
+            status=cast(GroupJoinRequestStatus, item.status),
+            created_at=cast(datetime, item.created_at),
+        )
+        for item in requests
+    ]
+
+
+@router.post("/conversations/{conversation_id}/join-requests/{request_id}/approve", response_model=ConversationResponse)
+async def approve_group_join_request(
+    conversation_id: int,
+    request_id: int,
+    current_user: User = Depends(get_current_verified_user),
+    db: Session = Depends(get_db),
+):
+    conversation = db.query(Conversation).filter(Conversation.id == conversation_id).first()
+    if not conversation:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+
+    current_user_id = int(cast(int, current_user.id))
+    _require_group_admin(conversation, current_user_id)
+
+    request_row = (
+        db.query(GroupJoinRequest)
+        .filter(
+            GroupJoinRequest.id == request_id,
+            GroupJoinRequest.conversation_id == conversation_id,
+        )
+        .first()
+    )
+    if not request_row:
+        raise HTTPException(status_code=404, detail="Join request not found")
+    if request_row.status != GroupJoinRequestStatus.PENDING:
+        raise HTTPException(status_code=400, detail="Join request is not pending")
+
+    if not _is_participant(db, conversation_id, int(cast(int, request_row.requester_id))):
+        db.add(ConversationParticipant(conversation_id=conversation_id, user_id=int(cast(int, request_row.requester_id))))
+
+    request_row.status = GroupJoinRequestStatus.ACCEPTED
+    db.commit()
+
+    members = (
+        db.query(ConversationParticipant)
+        .filter(ConversationParticipant.conversation_id == conversation.id)
+        .all()
+    )
+    return ConversationResponse(
+        id=int(cast(int, conversation.id)),
+        name=cast(str | None, conversation.name),
+        is_group=bool(cast(bool, conversation.is_group)),
+        created_by=cast(int | None, conversation.created_by),
+        created_at=cast(datetime, conversation.created_at),
+        participant_ids=[int(cast(int, m.user_id)) for m in members],
+    )
+
+
+@router.post("/conversations/{conversation_id}/join-requests/{request_id}/reject", response_model=dict)
+async def reject_group_join_request(
+    conversation_id: int,
+    request_id: int,
+    current_user: User = Depends(get_current_verified_user),
+    db: Session = Depends(get_db),
+):
+    conversation = db.query(Conversation).filter(Conversation.id == conversation_id).first()
+    if not conversation:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+
+    current_user_id = int(cast(int, current_user.id))
+    _require_group_admin(conversation, current_user_id)
+
+    request_row = (
+        db.query(GroupJoinRequest)
+        .filter(
+            GroupJoinRequest.id == request_id,
+            GroupJoinRequest.conversation_id == conversation_id,
+        )
+        .first()
+    )
+    if not request_row:
+        raise HTTPException(status_code=404, detail="Join request not found")
+
+    request_row.status = GroupJoinRequestStatus.REJECTED
+    db.commit()
+    return {"message": "Join request rejected"}

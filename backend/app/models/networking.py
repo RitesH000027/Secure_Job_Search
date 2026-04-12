@@ -37,6 +37,12 @@ class ConnectionRequestStatus(str, enum.Enum):
     REJECTED = "rejected"
 
 
+class GroupJoinRequestStatus(str, enum.Enum):
+    PENDING = "pending"
+    ACCEPTED = "accepted"
+    REJECTED = "rejected"
+
+
 class Company(Base):
     __tablename__ = "companies"
 
@@ -207,5 +213,20 @@ class ConversationKeyEnvelope(Base):
     conversation_id = Column(Integer, ForeignKey("conversations.id", ondelete="CASCADE"), nullable=False, index=True)
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     encrypted_key = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class GroupJoinRequest(Base):
+    __tablename__ = "group_join_requests"
+
+    id = Column(Integer, primary_key=True, index=True)
+    conversation_id = Column(Integer, ForeignKey("conversations.id", ondelete="CASCADE"), nullable=False, index=True)
+    requester_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    status = Column(
+        Enum(GroupJoinRequestStatus, values_callable=lambda x: [e.value for e in x], validate_strings=True),
+        nullable=False,
+        default=GroupJoinRequestStatus.PENDING,
+    )
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

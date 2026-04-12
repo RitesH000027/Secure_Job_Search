@@ -7,6 +7,7 @@ from app.models.networking import (
 	ApplicationStatus,
 	MessageType,
 	ConnectionRequestStatus,
+	GroupJoinRequestStatus,
 	Company,
 	CompanyAdmin,
 	JobPosting,
@@ -18,6 +19,7 @@ from app.models.networking import (
 	ConnectionRequest,
 	UserEncryptionKey,
 	ConversationKeyEnvelope,
+	GroupJoinRequest,
 )
 
 __all__ = [
@@ -32,6 +34,7 @@ __all__ = [
 	"ApplicationStatus",
 	"MessageType",
 	"ConnectionRequestStatus",
+	"GroupJoinRequestStatus",
 	"Company",
 	"CompanyAdmin",
 	"JobPosting",
@@ -43,4 +46,5 @@ __all__ = [
 	"ConnectionRequest",
 	"UserEncryptionKey",
 	"ConversationKeyEnvelope",
+	"GroupJoinRequest",
 ]

@@ -4,7 +4,14 @@ Schemas for company, jobs, applications, messaging, and audit logs.
 from datetime import datetime
 from typing import Optional
 from pydantic import BaseModel, Field
-from app.models.networking import WorkMode, EmploymentType, ApplicationStatus, MessageType, ConnectionRequestStatus
+from app.models.networking import (
+    WorkMode,
+    EmploymentType,
+    ApplicationStatus,
+    MessageType,
+    ConnectionRequestStatus,
+    GroupJoinRequestStatus,
+)
 
 
 class CompanyCreate(BaseModel):
@@ -217,3 +224,31 @@ class GlobalSearchResult(BaseModel):
     description: Optional[str] = None
     url: str
     connection_status: Optional[str] = None
+
+
+class GroupConversationRename(BaseModel):
+    name: str = Field(..., min_length=1, max_length=255)
+
+
+class GroupParticipantManage(BaseModel):
+    user_id: int
+
+
+class GroupSearchResult(BaseModel):
+    id: int
+    name: str
+    participant_count: int
+    is_member: bool
+    has_pending_request: bool
+
+
+class GroupJoinRequestResponse(BaseModel):
+    id: int
+    conversation_id: int
+    requester_id: int
+    requester_name: str
+    status: GroupJoinRequestStatus
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
