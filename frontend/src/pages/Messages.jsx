@@ -589,7 +589,7 @@ const Messages = () => {
               <div className="space-y-2">
                 {receivedRequests.map((request) => (
                   <div key={request.id} className="rounded-lg border border-gray-200 p-2 flex items-center justify-between gap-2">
-                    <span className="text-xs text-gray-700">User #{request.requester_id}</span>
+                    <span className="text-xs text-gray-700">{request.requester_name || `User #${request.requester_id}`}</span>
                     <div className="flex gap-1">
                       <button className="li-btn-primary !py-1 !px-3" onClick={() => handleAcceptRequest(request.id)}>Accept</button>
                       <button className="li-btn-secondary !py-1 !px-3" onClick={() => handleRejectRequest(request.id)}>Reject</button>
@@ -598,7 +598,16 @@ const Messages = () => {
                 ))}
               </div>
             )}
-            {sentRequests.length > 0 && <p className="text-xs text-gray-500 mt-2">Sent requests: {sentRequests.length}</p>}
+            {sentRequests.length > 0 && (
+              <div className="mt-2 space-y-1">
+                <p className="text-xs font-medium text-gray-700">Sent requests</p>
+                {sentRequests.map((request) => (
+                  <p key={request.id} className="text-xs text-gray-500">
+                    To {request.recipient_name || `User #${request.recipient_id}`}
+                  </p>
+                ))}
+              </div>
+            )}
           </div>
 
           <form onSubmit={handleCreateGroup} className="p-4 border-b border-gray-200 space-y-2">

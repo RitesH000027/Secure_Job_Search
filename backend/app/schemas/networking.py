@@ -168,7 +168,9 @@ class UserConnectionResponse(BaseModel):
 class ConnectionRequestResponse(BaseModel):
     id: int
     requester_id: int
+    requester_name: Optional[str] = None
     recipient_id: int
+    recipient_name: Optional[str] = None
     status: ConnectionRequestStatus
     created_at: datetime
 

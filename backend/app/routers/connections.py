@@ -50,6 +50,12 @@ def _relationship_status(db: Session, current_user_id: int, other_user_id: int) 
 	return "none"
 
 
+def _user_display_name(user: User | None) -> str | None:
+	if not user:
+		return None
+	return user.full_name or user.email
+
+
 @router.get("/search", response_model=list[UserConnectionResponse])
 async def search_users_for_connection(
 	query: str = Query("", min_length=0, max_length=100),
@@ -141,7 +147,15 @@ async def send_connection_request(
 
 	db.commit()
 	db.refresh(request)
-	return request
+	return ConnectionRequestResponse(
+		id=request.id,
+		requester_id=request.requester_id,
+		requester_name=_user_display_name(current_user),
+		recipient_id=request.recipient_id,
+		recipient_name=_user_display_name(recipient),
+		status=request.status,
+		created_at=request.created_at,
+	)
 
 
 @router.get("/requests/received", response_model=list[ConnectionRequestResponse])
@@ -149,7 +163,7 @@ async def list_received_requests(
 	current_user: User = Depends(get_current_verified_user),
 	db: Session = Depends(get_db),
 ):
-	return (
+	requests = (
 		db.query(ConnectionRequest)
 		.filter(
 			ConnectionRequest.recipient_id == current_user.id,
@@ -158,6 +172,20 @@ async def list_received_requests(
 		.order_by(ConnectionRequest.created_at.desc())
 		.all()
 	)
+	requester_ids = [item.requester_id for item in requests]
+	requester_map = {user.id: user for user in db.query(User).filter(User.id.in_(requester_ids)).all()} if requester_ids else {}
+	return [
+		ConnectionRequestResponse(
+			id=item.id,
+			requester_id=item.requester_id,
+			requester_name=_user_display_name(requester_map.get(item.requester_id)),
+			recipient_id=item.recipient_id,
+			recipient_name=_user_display_name(current_user),
+			status=item.status,
+			created_at=item.created_at,
+		)
+		for item in requests
+	]
 
 
 @router.get("/requests/sent", response_model=list[ConnectionRequestResponse])
@@ -165,7 +193,7 @@ async def list_sent_requests(
 	current_user: User = Depends(get_current_verified_user),
 	db: Session = Depends(get_db),
 ):
-	return (
+	requests = (
 		db.query(ConnectionRequest)
 		.filter(
 			ConnectionRequest.requester_id == current_user.id,
@@ -174,6 +202,20 @@ async def list_sent_requests(
 		.order_by(ConnectionRequest.created_at.desc())
 		.all()
 	)
+	recipient_ids = [item.recipient_id for item in requests]
+	recipient_map = {user.id: user for user in db.query(User).filter(User.id.in_(recipient_ids)).all()} if recipient_ids else {}
+	return [
+		ConnectionRequestResponse(
+			id=item.id,
+			requester_id=item.requester_id,
+			requester_name=_user_display_name(current_user),
+			recipient_id=item.recipient_id,
+			recipient_name=_user_display_name(recipient_map.get(item.recipient_id)),
+			status=item.status,
+			created_at=item.created_at,
+		)
+		for item in requests
+	]
 
 
 @router.post("/requests/{request_id}/accept", response_model=ConnectionRequestResponse)
