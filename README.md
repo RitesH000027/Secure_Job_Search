@@ -1,219 +1,193 @@
 # CareerBridge
 
-A secure, full-stack job search and networking platform with end-to-end encryption, PKI-backed trust, and tamper-evident audit logging.
+CareerBridge is a full-stack professional networking and job platform built with FastAPI, React, PostgreSQL, JWT auth, OTP verification, encrypted messaging, and deployment scripts for the current college-server workflow.
 
-## 📚 Documentation
+## What the app does
 
-- **[WORKFLOW.md](WORKFLOW.md)** - Detailed milestone breakdown and timeline
-- **[SETUP_GUIDE.md](SETUP_GUIDE.md)** - Step-by-step installation guide
-- **[ARCHITECTURE.md](ARCHITECTURE.md)** - System architecture and security design
+- User registration, login, OTP verification, password reset, and optional TOTP support.
+- Profile management with privacy controls, profile pictures, and viewer tracking.
+- Professional connections with friend requests, graph view, and mutual-connection messaging.
+- Secure 1-to-1 and group messaging with client-side encryption support.
+- Company pages, job posting, job search, recruiter applicant review, and application tracking.
+- Home feed with posts from connections and company/job activity.
+- Resume upload, encrypted storage, integrity verification, and OTP-protected actions.
+- Admin dashboard, audit logs, tamper-evident log verification, and security hardening.
 
-## 🚀 Quick Start
+## Repository Layout
 
-### Prerequisites
-- Ubuntu 22.04 VM
-- Python 3.10+
-- PostgreSQL 14+
-- Nginx
-
-### Installation
-
-```bash
-# Clone repository
-git clone <your-repo-url>
-cd FCS
-
-# Create virtual environment
-python3 -m venv venv
-source venv/bin/activate
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Set up environment
-cp .env.example .env
-# Edit .env with your configuration
-
-# Run database migrations
-alembic upgrade head
-
-# Start application
-uvicorn app.main:app --reload
-```
-
-Visit: `https://localhost:8000/docs` for API documentation
-
-## ✨ Features
-
-### Security First
-- 🔐 **End-to-End Encryption** for messaging
-- 🔑 **PKI Integration** for message signing and resume verification
-- 🛡️ **OTP with Virtual Keyboard** for high-risk actions
-- 📝 **Tamper-Evident Audit Logs** with hash chaining
-- 🔒 **Encrypted Resume Storage** with strict access control
-- 🚫 **Multi-Layer Protection** against SQL injection, XSS, CSRF, session hijacking
-
-### Core Functionality
-- 👤 User profiles with granular privacy controls
-- 🏢 Company pages and job postings
-- 🔍 Advanced job search with filters
-- 📄 Resume upload and management
-- 💬 Secure messaging (1-to-1 and group)
-- 🤝 Professional connections
-- 📊 Application tracking system
-- 👨‍💼 Recruiter dashboard
-- 🔧 Admin moderation tools
-
-## 🏗️ Project Structure
-
-```
+```text
 FCS/
 ├── backend/
 │   ├── app/
-│   │   ├── main.py              # FastAPI app entry
-│   │   ├── config.py            # Configuration
-│   │   ├── database.py          # Database connection
-│   │   ├── models/              # SQLAlchemy models
-│   │   ├── schemas/             # Pydantic schemas
-│   │   ├── routers/             # API endpoints
-│   │   ├── services/            # Business logic
-│   │   ├── utils/               # Utilities (security, OTP, PKI)
-│   │   └── middleware/          # Auth, logging, CORS
-│   ├── alembic/                 # Database migrations
-│   └── tests/                   # Unit and integration tests
-├── frontend/                    # React/Vue application
-├── requirements.txt             # Python dependencies
-├── requirements-dev.txt         # Development tools
-└── .env                         # Environment variables
+│   │   ├── main.py
+│   │   ├── config.py
+│   │   ├── database.py
+│   │   ├── dependencies.py
+│   │   ├── models/
+│   │   ├── routers/
+│   │   ├── schemas/
+│   │   └── utils/
+│   └── smoke_march.py
+├── frontend/
+│   ├── src/
+│   │   ├── components/
+│   │   ├── contexts/
+│   │   ├── pages/
+│   │   └── services/
+│   ├── package.json
+│   └── vite.config.js
+├── scripts/
+│   ├── deploy_v0_college_server.sh
+│   ├── start_backend_server.sh
+│   ├── start_frontend.ps1
+│   ├── start_tunnel.ps1
+│   ├── THREE_TERMINAL_RUNBOOK.md
+│   └── V0_DEPLOY_NOW.md
+├── requirements.txt
+├── .env.example
+└── README.md
 ```
 
-## 🔧 Technology Stack
+## Tech Stack
 
-- **Backend**: FastAPI (Python)
-- **Database**: PostgreSQL
-- **Web Server**: Nginx
-- **Authentication**: JWT + OTP
-- **Encryption**: Fernet (AES-256), PyNaCl
-- **Password Hashing**: bcrypt / Argon2
-- **Frontend**: React / Vue (TBD)
-- **Cache**: Redis
+- Backend: FastAPI
+- Database: PostgreSQL
+- ORM: SQLAlchemy
+- Auth: JWT + OTP
+- Messaging: encrypted conversation keys with ciphertext-only storage for secure messages
+- Frontend: React 19 + Vite + Tailwind CSS
+- Deployment helpers: shell and PowerShell scripts for the college-server workflow
 
-## 📅 Milestones
+## Key Features
 
-| Milestone | Date | Status | Deliverables |
-|-----------|------|--------|--------------|
-| **M1: Setup** | Feb 13 | 🔄 | HTTPS, skeleton app, database |
-| **M2: Auth & Profiles** | Feb 27 | ⏳ | Registration, OTP, resume upload, admin dashboard |
-| **M3: Jobs & Messaging** | Mar 31 | ⏳ | Job postings, search, E2EE messaging, audit logs |
-| **M4: Final** | Apr 30 | ⏳ | PKI, virtual keyboard, security hardening, demo |
+### Authentication and Security
 
-## 🛡️ Security Features
+- JWT login and refresh flow
+- Email and mobile OTP verification
+- OTP-gated high-risk actions
+- Optional TOTP support
+- Security headers, trusted host validation, and CORS restrictions
 
-### Implemented in Application
-- [x] Password hashing (Argon2)
-- [x] JWT authentication + protected routes
-- [x] Email/mobile OTP verification and OTP-gated high-risk actions
-- [x] Resume encryption at rest (Fernet) with access control
-- [x] End-to-end encrypted (ciphertext-only) messaging flow
-- [x] PKI-backed signing and verification for integrity-critical flows
-- [x] Tamper-evident audit logs (hash-chained with verification endpoint)
-- [x] SQL injection protections via SQLAlchemy ORM patterns
-- [x] Security headers and trusted host validation
+### Profiles and Connections
 
-### Deployment Verification Required
-- [ ] HTTPS/TLS termination verification on VM/Nginx runtime
-- [ ] Production rate-limit policy tuning + validation under load
-- [ ] Final concurrency/scalability demo on target deployment
+- Editable professional profiles
+- Privacy controls for profile fields
+- Profile pictures
+- Connection requests and graph view
+- Recent profile viewers and view tracking controls
 
-## 📖 API Documentation
+### Messaging
 
-Once running, visit `/docs` for interactive API documentation (Swagger UI).
+- One-to-one secure messaging
+- Group messaging
+- Group join requests and admin controls
+- Search people from the global header
+- Connection-aware messaging flows
 
-### Example Endpoints
+### Jobs and Companies
 
-```
-POST   /auth/register          # User registration
-POST   /auth/login             # User login
-POST   /auth/verify-otp        # OTP verification
-GET    /users/me               # Get current user profile
-PUT    /users/me               # Update profile
-POST   /resumes/upload         # Upload encrypted resume
-GET    /jobs/search            # Search jobs
-POST   /jobs/{id}/apply        # Apply to job
-POST   /messages/send          # Send encrypted message
-GET    /admin/users            # Admin: List all users
-GET    /admin/audit-logs       # Admin: View audit logs
-```
+- Create and manage company pages
+- Post jobs with salary, location, work mode, and deadline
+- Recruiter applicant review and status updates
+- Applicant names shown in recruiter views
+- Apply-deadline enforcement for candidates
 
-## 🧪 Testing
+### Feed
+
+- Create posts with optional images
+- Edit/delete own posts
+- Like and comment on posts
+- Home feed shows posts from connections and company/job activity
+- Infinite scroll loading for feed items
+
+### Resume and Admin
+
+- Encrypted resume upload and storage
+- Resume integrity verification
+- OTP-protected download and delete flows
+- Admin dashboard, audit log access, and verification endpoint
+
+## Local Development
+
+### Backend
+
+1. Create and activate a Python virtual environment.
+2. Install backend dependencies from `requirements.txt`.
+3. Configure `.env` from `.env.example`.
+4. Run the backend from the `backend/` directory.
+
+Example:
 
 ```bash
-# Run tests
-pytest
-
-# Run with coverage
-pytest --cov=app tests/
-
-# Linting
-black app/
-ruff check app/
-mypy app/
+cd backend
+python -m venv .venv
+source .venv/bin/activate
+pip install -r ../requirements.txt
+uvicorn app.main:app --host 0.0.0.0 --port 8010 --reload
 ```
 
-## 🚀 Deployment
-
-### Development
-```bash
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
-```
-
-### Production
-```bash
-# Using systemd service
-sudo systemctl start job-platform
-sudo systemctl enable job-platform
-
-# Or with Gunicorn
-gunicorn app.main:app -w 4 -k uvicorn.workers.UvicornWorker
-```
-
-## 📝 Environment Variables
+### Frontend
 
 ```bash
-# Application
-SECRET_KEY=your-secret-key
-DATABASE_URL=postgresql://user:pass@localhost/db
-ENCRYPTION_KEY=your-fernet-key
-
-# Email (OTP)
-SMTP_HOST=smtp.gmail.com
-SMTP_PORT=587
-SMTP_USER=your-email
-SMTP_PASSWORD=your-password
-
-# Optional
-REDIS_URL=redis://localhost:6379
+cd frontend
+npm install
+npm run dev
 ```
 
-## 🤝 Contributing
+For a production-style local preview:
 
-1. Create feature branch: `git checkout -b feature/amazing-feature`
-2. Commit changes: `git commit -m 'Add amazing feature'`
-3. Push to branch: `git push origin feature/amazing-feature`
-4. Open pull request
+```bash
+npm run build
+npm run preview -- --host 0.0.0.0 --port 4173
+```
 
-## 📄 License
+## College Server Workflow
 
-Educational project for FCS course.
+This repo includes scripts for the current deployment workflow:
 
-## 👥 Team
+- `scripts/start_backend_server.sh`
+- `scripts/start_frontend.ps1`
+- `scripts/start_tunnel.ps1`
+- `scripts/deploy_v0_college_server.sh`
+- `scripts/THREE_TERMINAL_RUNBOOK.md`
+- `scripts/V0_DEPLOY_NOW.md`
 
-[Your Team Name]
+Typical flow:
 
-## 📞 Support
+1. Push local changes to git.
+2. Pull the changes on the college server.
+3. Restart backend and frontend using the provided scripts.
+4. Re-open the tunnel if needed.
 
-For questions or issues, contact [your-email@example.com]
+## Environment Variables
 
----
+Create a `.env` file from `.env.example` and configure values like:
 
-**Built with security in mind. 🔒**
+- `SECRET_KEY`
+- `DATABASE_URL`
+- `ENCRYPTION_KEY`
+- `SMTP_HOST`
+- `SMTP_PORT`
+- `SMTP_USER`
+- `SMTP_PASSWORD`
+- `REDIS_URL` if used
+
+The backend auto-creates required tables on startup for the current schema.
+
+## API Docs
+
+When the backend is running, open:
+
+- `/docs` for Swagger UI
+- `/redoc` for ReDoc
+
+## Notes
+
+- Uploaded profile pictures are served from `/profile-pictures`.
+- Uploaded post images are served from `/post-images`.
+- The home feed currently combines connection posts and active company job activity.
+- Recruiters can update job deadlines after posting, and candidates cannot apply after the deadline passes.
+
+## License
+
+Educational project for FCS course use.
