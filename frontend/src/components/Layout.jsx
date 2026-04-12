@@ -7,6 +7,8 @@ const Layout = () => {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const [connectionsCount, setConnectionsCount] = useState(0);
+  const [connections, setConnections] = useState([]);
+  const [showConnections, setShowConnections] = useState(false);
   const [searchText, setSearchText] = useState('');
   const [searchSuggestions, setSearchSuggestions] = useState([]);
   const [searchLoading, setSearchLoading] = useState(false);
@@ -18,8 +20,10 @@ const Layout = () => {
       try {
         const response = await connectionAPI.listFriends();
         const friends = Array.isArray(response.data) ? response.data : [];
+        setConnections(friends);
         setConnectionsCount(friends.length);
       } catch {
+        setConnections([]);
         setConnectionsCount(0);
       }
     };
@@ -215,7 +219,32 @@ const Layout = () => {
             <h2 className="mt-2 text-base font-semibold text-gray-900">{user?.full_name}</h2>
             <p className="text-sm text-gray-500 capitalize">{user?.role}</p>
             <div className="mt-3 border-t border-gray-100 pt-3 text-sm text-gray-600 space-y-1">
-              <p>Connections: {connectionsCount}</p>
+              <button
+                type="button"
+                className="text-left text-[#0a66c2] hover:underline"
+                onClick={() => setShowConnections((previous) => !previous)}
+              >
+                Connections: {connectionsCount}
+              </button>
+              {showConnections && (
+                <div className="mt-2 max-h-44 overflow-y-auto rounded-lg border border-gray-200 bg-white">
+                  {connections.length === 0 ? (
+                    <p className="px-3 py-2 text-xs text-gray-500">No connections yet.</p>
+                  ) : (
+                    connections.map((friend) => (
+                      <button
+                        key={friend.id}
+                        type="button"
+                        className="w-full px-3 py-2 text-left hover:bg-gray-50 border-b border-gray-100 last:border-b-0"
+                        onClick={() => navigate(`/messages?user=${friend.id}`)}
+                      >
+                        <p className="text-sm font-medium text-gray-900">{friend.full_name}</p>
+                        <p className="text-xs text-gray-500">{friend.headline || friend.role}</p>
+                      </button>
+                    ))
+                  )}
+                </div>
+              )}
             </div>
           </div>
 
