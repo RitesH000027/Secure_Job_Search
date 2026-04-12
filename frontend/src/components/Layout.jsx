@@ -111,7 +111,9 @@ const Layout = () => {
         <div className="max-w-[1120px] mx-auto px-3 sm:px-4 py-2 sm:py-0 sm:h-16">
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-3 min-w-0">
-              <img src="/CB.png" alt="CareerBridge" className="w-8 h-8 sm:w-9 sm:h-9 rounded-md object-cover border border-gray-200 bg-white" />
+              <div className="h-8 sm:h-9 w-12 sm:w-14 rounded-md border border-gray-200 bg-white overflow-hidden shrink-0">
+                <img src="/CB.png" alt="CareerBridge" className="w-full h-full object-contain block" />
+              </div>
               <div className="hidden md:block relative" ref={searchBoxRef}>
                 <form onSubmit={handleSearchSubmit}>
                   <input
