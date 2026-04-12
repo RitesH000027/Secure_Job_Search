@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { connectionAPI, messageAPI } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -131,6 +132,7 @@ const AsyncDecryptedText = ({ promise }) => {
 
 const Messages = () => {
   const { user } = useAuth();
+  const [searchParams] = useSearchParams();
   const webCryptoAvailable = canUseWebCrypto();
 
   const [friends, setFriends] = useState([]);
@@ -164,6 +166,23 @@ const Messages = () => {
     loadSidebarData();
     loadConversations();
   }, []);
+
+  useEffect(() => {
+    const userIdParam = searchParams.get('user');
+    if (!userIdParam) {
+      return;
+    }
+
+    const friendId = Number(userIdParam);
+    if (Number.isNaN(friendId) || !friends.length || conversations.length === 0) {
+      return;
+    }
+
+    const friend = friends.find((item) => item.id === friendId);
+    if (friend) {
+      openChatWithFriend(friendId);
+    }
+  }, [searchParams, friends, conversations]);
 
   useEffect(() => {
     if (!searchQuery.trim()) {

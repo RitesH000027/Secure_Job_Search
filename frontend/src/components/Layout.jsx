@@ -1,12 +1,17 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Outlet, Link, NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { connectionAPI } from '../services/api';
+import { connectionAPI, searchAPI } from '../services/api';
 
 const Layout = () => {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const [connectionsCount, setConnectionsCount] = useState(0);
+  const [searchText, setSearchText] = useState('');
+  const [searchSuggestions, setSearchSuggestions] = useState([]);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const searchBoxRef = useRef(null);
 
   useEffect(() => {
     const loadConnectionsCount = async () => {
@@ -24,9 +29,62 @@ const Layout = () => {
     }
   }, [user]);
 
+  useEffect(() => {
+    const query = searchText.trim();
+    if (!query) {
+      setSearchSuggestions([]);
+      setSearchOpen(false);
+      return undefined;
+    }
+
+    const timeout = setTimeout(async () => {
+      try {
+        setSearchLoading(true);
+        const response = await searchAPI.global(query, 6);
+        setSearchSuggestions(response.data || []);
+        setSearchOpen(true);
+      } catch {
+        setSearchSuggestions([]);
+      } finally {
+        setSearchLoading(false);
+      }
+    }, 250);
+
+    return () => clearTimeout(timeout);
+  }, [searchText]);
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (searchBoxRef.current && !searchBoxRef.current.contains(event.target)) {
+        setSearchOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
   const handleLogout = () => {
     logout();
     navigate('/login');
+  };
+
+  const handleSearchSubmit = (event) => {
+    event.preventDefault();
+    const query = searchText.trim();
+    if (!query) {
+      return;
+    }
+
+    navigate(`/search?q=${encodeURIComponent(query)}`);
+    setSearchOpen(false);
+  };
+
+  const handleSuggestionClick = (suggestion) => {
+    setSearchText('');
+    setSearchSuggestions([]);
+    setSearchOpen(false);
+    navigate(suggestion.url);
   };
 
   const navItems = [
@@ -45,8 +103,59 @@ const Layout = () => {
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-3 min-w-0">
               <img src="/CB.png" alt="CareerBridge" className="w-8 h-8 sm:w-9 sm:h-9 rounded-md object-cover border border-gray-200 bg-white" />
-              <div className="hidden md:block">
-                <input className="li-input w-72 bg-[#edf3f8] border-0" placeholder="Search people, jobs, posts" />
+              <div className="hidden md:block relative" ref={searchBoxRef}>
+                <form onSubmit={handleSearchSubmit}>
+                  <input
+                    className="li-input w-72 bg-[#edf3f8] border-0"
+                    placeholder="Search people or companies"
+                    value={searchText}
+                    onChange={(event) => {
+                      setSearchText(event.target.value);
+                      setSearchOpen(true);
+                    }}
+                    onFocus={() => {
+                      if (searchText.trim()) {
+                        setSearchOpen(true);
+                      }
+                    }}
+                  />
+                </form>
+                {searchOpen && searchText.trim() && (
+                  <div className="absolute left-0 top-full mt-2 w-80 rounded-xl border border-gray-200 bg-white shadow-lg overflow-hidden z-30">
+                    {searchLoading ? (
+                      <div className="px-4 py-3 text-sm text-gray-500">Searching...</div>
+                    ) : searchSuggestions.length === 0 ? (
+                      <div className="px-4 py-3 text-sm text-gray-500">No suggestions found</div>
+                    ) : (
+                      <div className="divide-y divide-gray-100 max-h-96 overflow-y-auto">
+                        {searchSuggestions.map((item) => (
+                          <button
+                            key={`${item.result_type}-${item.id}`}
+                            type="button"
+                            className="w-full text-left px-4 py-3 hover:bg-gray-50"
+                            onClick={() => handleSuggestionClick(item)}
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <div>
+                                <p className="text-sm font-semibold text-gray-900">{item.title}</p>
+                                <p className="text-xs text-gray-500 mt-1">{item.subtitle}</p>
+                              </div>
+                              <span className="text-[10px] uppercase tracking-wide text-gray-400">{item.result_type}</span>
+                            </div>
+                            {item.description && <p className="text-xs text-gray-600 mt-1 line-clamp-2">{item.description}</p>}
+                          </button>
+                        ))}
+                        <button
+                          type="button"
+                          className="w-full text-left px-4 py-3 text-sm font-medium text-[#0a66c2] hover:bg-blue-50"
+                          onClick={handleSearchSubmit}
+                        >
+                          View full search results
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
 
