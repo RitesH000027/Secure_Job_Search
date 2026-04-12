@@ -319,7 +319,13 @@ const Profile = () => {
           <div className="space-y-3 rounded-lg border border-gray-200 p-4">
             <div>
               <label htmlFor="profile_picture_file" className="block text-sm font-medium text-gray-700 mb-1">Upload Profile Picture</label>
-              <input id="profile_picture_file" type="file" accept="image/png,image/jpeg,image/webp" className="li-input" onChange={handleProfilePictureSelect} />
+              <input
+                id="profile_picture_file"
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                className="li-input cursor-pointer text-gray-700 file:mr-3 file:rounded-lg file:border file:border-gray-300 file:bg-white file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-gray-700 hover:file:bg-gray-50"
+                onChange={handleProfilePictureSelect}
+              />
             </div>
             {profilePictureSrc && (
               <img src={profilePictureSrc} alt="Profile preview" className="h-24 w-24 rounded-full object-cover border border-gray-200" />

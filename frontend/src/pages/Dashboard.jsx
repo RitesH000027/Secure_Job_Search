@@ -227,7 +227,7 @@ const Dashboard = () => {
             type="file"
             accept="image/png,image/jpeg,image/jpg,image/gif,image/webp"
             onChange={(event) => setPostImage(event.target.files?.[0] || null)}
-            className="text-sm text-gray-600"
+            className="text-sm text-gray-700 cursor-pointer file:mr-3 file:rounded-lg file:border file:border-gray-300 file:bg-white file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-gray-700 hover:file:bg-gray-50"
           />
           {postImage && <span className="text-xs text-gray-500">Selected: {postImage.name}</span>}
           <button type="submit" className="li-btn-primary sm:ml-auto" disabled={posting}>
