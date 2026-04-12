@@ -1,7 +1,7 @@
 """
 Job posting, search, and application tracking endpoints.
 """
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import or_
@@ -43,6 +43,23 @@ def _is_company_admin(db: Session, company_id: int, user_id: int) -> bool:
     )
 
 
+def _application_to_response(application: JobApplication, candidate: User | None = None) -> JobApplicationResponse:
+    return JobApplicationResponse(
+        id=application.id,
+        job_id=application.job_id,
+        candidate_id=application.candidate_id,
+        candidate_name=(candidate.full_name if candidate else None),
+        candidate_email=(candidate.email if candidate else None),
+        resume_id=application.resume_id,
+        cover_note=application.cover_note,
+        status=application.status,
+        recruiter_notes=application.recruiter_notes,
+        is_shortlisted=application.is_shortlisted,
+        created_at=application.created_at,
+        updated_at=application.updated_at,
+    )
+
+
 @router.post("", response_model=JobResponse, status_code=status.HTTP_201_CREATED)
 async def create_job(
     payload: JobCreate,
@@ -67,6 +84,12 @@ async def create_job(
     if payload_data.get("salary_min") and payload_data.get("salary_max") and payload_data["salary_min"] > payload_data["salary_max"]:
         raise HTTPException(status_code=400, detail="salary_min cannot exceed salary_max")
 
+    deadline_value = payload_data.get("application_deadline")
+    if deadline_value is None:
+        deadline_value = datetime.utcnow() + timedelta(days=30)
+    if deadline_value <= datetime.utcnow():
+        raise HTTPException(status_code=400, detail="application_deadline must be in the future")
+
     job = JobPosting(
         company_id=payload_data["company_id"],
         title=payload_data["title"],
@@ -77,7 +100,7 @@ async def create_job(
         employment_type=payload_data.get("employment_type"),
         salary_min=payload_data.get("salary_min"),
         salary_max=payload_data.get("salary_max"),
-        application_deadline=payload_data.get("application_deadline"),
+        application_deadline=deadline_value,
         created_by=current_user.id,
     )
     db.add(job)
@@ -179,6 +202,10 @@ async def update_job(
     if salary_min and salary_max and salary_min > salary_max:
         raise HTTPException(status_code=400, detail="salary_min cannot exceed salary_max")
 
+    if "application_deadline" in update_data and update_data["application_deadline"] is not None:
+        if update_data["application_deadline"] <= datetime.utcnow():
+            raise HTTPException(status_code=400, detail="application_deadline must be in the future")
+
     for field, value in update_data.items():
         setattr(job, field, value)
 
@@ -255,12 +282,16 @@ async def list_my_applications(
     current_user: User = Depends(get_current_verified_user),
     db: Session = Depends(get_db),
 ):
-    return (
+    applications = (
         db.query(JobApplication)
         .filter(JobApplication.candidate_id == current_user.id)
         .order_by(JobApplication.created_at.desc())
         .all()
     )
+    return [
+        _application_to_response(application, current_user)
+        for application in applications
+    ]
 
 
 @router.get("/{job_id}/applications", response_model=list[JobApplicationResponse])
@@ -276,12 +307,21 @@ async def list_job_applications(
     if not _is_company_admin(db, job.company_id, current_user.id) and current_user.role.value != "admin":
         raise HTTPException(status_code=403, detail="Not authorized to view applicants")
 
-    return (
+    applications = (
         db.query(JobApplication)
         .filter(JobApplication.job_id == job_id)
         .order_by(JobApplication.created_at.desc())
         .all()
     )
+
+    candidate_ids = {application.candidate_id for application in applications}
+    candidates = db.query(User).filter(User.id.in_(candidate_ids)).all() if candidate_ids else []
+    candidate_map = {candidate.id: candidate for candidate in candidates}
+
+    return [
+        _application_to_response(application, candidate_map.get(application.candidate_id))
+        for application in applications
+    ]
 
 
 @router.patch("/applications/{application_id}/status", response_model=JobApplicationResponse)

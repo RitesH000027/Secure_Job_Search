@@ -101,6 +101,8 @@ class JobApplicationResponse(BaseModel):
     id: int
     job_id: int
     candidate_id: int
+    candidate_name: Optional[str] = None
+    candidate_email: Optional[str] = None
     resume_id: Optional[int]
     cover_note: Optional[str]
     status: ApplicationStatus

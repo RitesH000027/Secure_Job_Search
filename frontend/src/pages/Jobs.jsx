@@ -3,17 +3,27 @@ import { Link } from 'react-router-dom';
 import { companyAPI, jobsAPI, resumeAPI } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 
-const defaultJobForm = {
-  company_id: '',
-  title: '',
-  description: '',
-  required_skills: '',
-  location: '',
-  work_mode: 'on-site',
-  employment_type: 'full-time',
-  salary_min: '',
-  salary_max: '',
-  application_deadline: '',
+const toDateTimeLocalValue = (date) => {
+  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+  return local.toISOString().slice(0, 16);
+};
+
+const createDefaultJobForm = () => {
+  const defaultDeadline = new Date();
+  defaultDeadline.setDate(defaultDeadline.getDate() + 30);
+
+  return {
+    company_id: '',
+    title: '',
+    description: '',
+    required_skills: '',
+    location: '',
+    work_mode: 'on-site',
+    employment_type: 'full-time',
+    salary_min: '',
+    salary_max: '',
+    application_deadline: toDateTimeLocalValue(defaultDeadline),
+  };
 };
 
 const APPLICATION_FLOW = ['Applied', 'Reviewed', 'Interviewed'];
@@ -62,11 +72,12 @@ const Jobs = () => {
     remote: false,
     employment_type: '',
   });
-  const [jobForm, setJobForm] = useState(defaultJobForm);
+  const [jobForm, setJobForm] = useState(createDefaultJobForm());
   const [companyForm, setCompanyForm] = useState({ name: '', description: '', location: '', website: '' });
   const [coverNotes, setCoverNotes] = useState({});
   const [selectedResumeIds, setSelectedResumeIds] = useState({});
   const [applicantUpdates, setApplicantUpdates] = useState({});
+  const [deadlineDrafts, setDeadlineDrafts] = useState({});
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -87,7 +98,19 @@ const Jobs = () => {
     try {
       setLoading(true);
       const response = await jobsAPI.search(params);
-      setJobs(response.data || []);
+      const jobRows = response.data || [];
+      setJobs(jobRows);
+      setDeadlineDrafts((previous) => {
+        const updated = { ...previous };
+        jobRows.forEach((job) => {
+          if (!(job.id in updated)) {
+            updated[job.id] = job.application_deadline
+              ? toDateTimeLocalValue(new Date(job.application_deadline))
+              : '';
+          }
+        });
+        return updated;
+      });
     } catch {
       setError('Failed to load jobs');
     } finally {
@@ -197,7 +220,7 @@ const Jobs = () => {
         application_deadline: jobForm.application_deadline || null,
       };
       await jobsAPI.create(payload);
-      setJobForm(defaultJobForm);
+      setJobForm(createDefaultJobForm());
       setSuccess('Job posted');
       await loadJobs();
     } catch (err) {
@@ -244,6 +267,46 @@ const Jobs = () => {
     }));
   };
 
+  const handleUpdateDeadline = async (jobId) => {
+    const value = deadlineDrafts[jobId];
+    if (!value) {
+      setError('Please choose a deadline time before saving.');
+      return;
+    }
+
+    try {
+      setError('');
+      setSuccess('');
+      await jobsAPI.update(jobId, { application_deadline: value });
+      setSuccess('Application deadline updated');
+      await loadJobs();
+    } catch (err) {
+      setError(err.response?.data?.detail || 'Failed to update deadline');
+    }
+  };
+
+  const formatDateTime = (value) => {
+    if (!value) {
+      return 'Not set';
+    }
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) {
+      return String(value);
+    }
+    return date.toLocaleString();
+  };
+
+  const isDeadlinePassed = (deadline) => {
+    if (!deadline) {
+      return false;
+    }
+    const parsed = new Date(deadline);
+    if (Number.isNaN(parsed.getTime())) {
+      return false;
+    }
+    return parsed.getTime() < Date.now();
+  };
+
   return (
     <div className="space-y-5">
       <div className="li-card p-6">
@@ -286,15 +349,21 @@ const Jobs = () => {
                     <p className="text-base font-semibold text-gray-900">{job.title}</p>
                     <p className="text-sm text-gray-700">{companyDirectory[job.company_id] || `Company #${job.company_id}`}</p>
                     <p className="text-sm text-gray-600">{job.location || 'Location N/A'} • {job.work_mode} • {job.employment_type}</p>
+                    <p className="text-xs text-gray-500 mt-1">Posted: {formatDateTime(job.created_at)}</p>
+                    <p className={`text-xs mt-1 ${isDeadlinePassed(job.application_deadline) ? 'text-red-600' : 'text-gray-500'}`}>
+                      Apply by: {formatDateTime(job.application_deadline)}
+                    </p>
                   </div>
                   <div className="flex flex-wrap gap-2">
                     <Link to={`/companies/${job.company_id}/jobs`} className="li-btn-secondary">
                       View Company
                     </Link>
                     {isRecruiter ? (
-                      <button className="li-btn-secondary" onClick={() => handleLoadApplicants(job.id)}>View Applicants</button>
+                      <button type="button" className="li-btn-secondary" onClick={() => handleLoadApplicants(job.id)}>View Applicants</button>
                     ) : (
-                      <button className="li-btn-primary" onClick={() => handleApply(job.id)}>Apply</button>
+                      <button type="button" className="li-btn-primary" disabled={isDeadlinePassed(job.application_deadline)} onClick={() => handleApply(job.id)}>
+                        {isDeadlinePassed(job.application_deadline) ? 'Deadline Passed' : 'Apply'}
+                      </button>
                     )}
                   </div>
                 </div>
@@ -303,6 +372,22 @@ const Jobs = () => {
                   <span className="rounded-full bg-gray-100 px-3 py-1">{job.work_mode}</span>
                   <span className="rounded-full bg-gray-100 px-3 py-1">{job.employment_type}</span>
                 </div>
+                {isRecruiter && (
+                  <div className="rounded-lg border border-gray-200 p-3 space-y-2">
+                    <p className="text-xs text-gray-600">Update application deadline</p>
+                    <div className="flex flex-col md:flex-row gap-2">
+                      <input
+                        type="datetime-local"
+                        className="li-input md:flex-1"
+                        value={deadlineDrafts[job.id] || ''}
+                        onChange={(e) => setDeadlineDrafts((previous) => ({ ...previous, [job.id]: e.target.value }))}
+                      />
+                      <button type="button" className="li-btn-secondary" onClick={() => handleUpdateDeadline(job.id)}>
+                        Save Deadline
+                      </button>
+                    </div>
+                  </div>
+                )}
                 {!isRecruiter && (
                   <div className="space-y-2">
                     <select
@@ -417,7 +502,7 @@ const Jobs = () => {
               <input className="li-input" type="number" placeholder="Salary min" value={jobForm.salary_min} onChange={(e) => setJobForm((prev) => ({ ...prev, salary_min: e.target.value }))} />
               <input className="li-input" type="number" placeholder="Salary max" value={jobForm.salary_max} onChange={(e) => setJobForm((prev) => ({ ...prev, salary_max: e.target.value }))} />
             </div>
-            <input className="li-input" type="datetime-local" value={jobForm.application_deadline} onChange={(e) => setJobForm((prev) => ({ ...prev, application_deadline: e.target.value }))} />
+            <input className="li-input" type="datetime-local" value={jobForm.application_deadline} onChange={(e) => setJobForm((prev) => ({ ...prev, application_deadline: e.target.value }))} required />
             <button className="li-btn-primary" type="submit">Post Job</button>
           </form>
 
@@ -430,7 +515,12 @@ const Jobs = () => {
                 <div className="divide-y divide-gray-100">
                   {applicants.map((application) => (
                     <div key={application.id} className="p-5 space-y-3 text-sm">
-                      <span className="text-gray-700 block">Candidate #{application.candidate_id} • Current: {application.status}</span>
+                      <span className="text-gray-700 block">
+                        {application.candidate_name || `Candidate #${application.candidate_id}`}
+                        {application.candidate_email ? ` (${application.candidate_email})` : ''}
+                        {' '}• Current: {application.status}
+                      </span>
+                      <p className="text-xs text-gray-500">Applied at: {formatDateTime(application.created_at)}</p>
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
                         <select
                           className="li-input"
@@ -450,6 +540,7 @@ const Jobs = () => {
                           Shortlist candidate
                         </label>
                         <button
+                          type="button"
                           onClick={() => handleUpdateApplication(application.id)}
                           className="li-btn-primary"
                         >
