@@ -131,6 +131,7 @@ class ConversationResponse(BaseModel):
     created_by: Optional[int]
     created_at: datetime
     participant_ids: list[int]
+    participant_names: dict[str, str] = {}
 
 
 class MessageResponse(BaseModel):

@@ -982,7 +982,8 @@ const Messages = () => {
                   <div className="flex flex-wrap gap-2">
                     {(activeConversation.participant_ids || []).map((memberId) => {
                       const member = memberId === user?.id ? user : friendMap[memberId];
-                      const memberName = member?.full_name || `User #${memberId}`;
+                      const mappedName = activeConversation.participant_names?.[String(memberId)];
+                      const memberName = mappedName || member?.full_name || `User #${memberId}`;
                       const isAdminMember = activeConversation.created_by === memberId;
                       return (
                         <div key={memberId} className="rounded-full bg-white border border-gray-200 px-3 py-1 text-xs text-gray-700 flex items-center gap-2">

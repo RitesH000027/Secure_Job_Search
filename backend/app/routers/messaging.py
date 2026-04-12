@@ -76,6 +76,32 @@ def _require_group_admin(conversation: Conversation, user_id: int) -> None:
         raise HTTPException(status_code=403, detail="Only the group admin can perform this action")
 
 
+def _conversation_response(db: Session, conversation: Conversation) -> ConversationResponse:
+    members = (
+        db.query(ConversationParticipant)
+        .filter(ConversationParticipant.conversation_id == conversation.id)
+        .all()
+    )
+    participant_ids = [int(cast(int, m.user_id)) for m in members]
+    users = db.query(User).filter(User.id.in_(participant_ids)).all() if participant_ids else []
+    user_map = {int(cast(int, u.id)): u for u in users}
+    participant_names = {
+        str(uid): (user_map[uid].full_name or user_map[uid].email or f"User #{uid}")
+        for uid in participant_ids
+        if uid in user_map
+    }
+
+    return ConversationResponse(
+        id=int(cast(int, conversation.id)),
+        name=cast(str | None, conversation.name),
+        is_group=bool(cast(bool, conversation.is_group)),
+        created_by=cast(int | None, conversation.created_by),
+        created_at=cast(datetime, conversation.created_at),
+        participant_ids=participant_ids,
+        participant_names=participant_names,
+    )
+
+
 @router.post("/conversations", response_model=ConversationResponse, status_code=status.HTTP_201_CREATED)
 async def create_conversation(
     payload: ConversationCreate,
@@ -118,14 +144,7 @@ async def create_conversation(
 
     db.commit()
 
-    return ConversationResponse(
-        id=int(cast(int, conversation.id)),
-        name=cast(str | None, conversation.name),
-        is_group=bool(cast(bool, conversation.is_group)),
-        created_by=cast(int | None, conversation.created_by),
-        created_at=cast(datetime, conversation.created_at),
-        participant_ids=list(participant_ids),
-    )
+    return _conversation_response(db, conversation)
 
 
 @router.get("/conversations", response_model=list[ConversationResponse])
@@ -152,21 +171,7 @@ async def list_my_conversations(
 
     response = []
     for conversation in conversations:
-        members = (
-            db.query(ConversationParticipant)
-            .filter(ConversationParticipant.conversation_id == conversation.id)
-            .all()
-        )
-        response.append(
-            ConversationResponse(
-                id=int(cast(int, conversation.id)),
-                name=cast(str | None, conversation.name),
-                is_group=bool(cast(bool, conversation.is_group)),
-                created_by=cast(int | None, conversation.created_by),
-                created_at=cast(datetime, conversation.created_at),
-                participant_ids=[int(cast(int, m.user_id)) for m in members],
-            )
-        )
+        response.append(_conversation_response(db, conversation))
 
     return response
 
@@ -382,19 +387,7 @@ async def rename_group_conversation(
     conversation.name = new_name
     db.commit()
 
-    members = (
-        db.query(ConversationParticipant)
-        .filter(ConversationParticipant.conversation_id == conversation.id)
-        .all()
-    )
-    return ConversationResponse(
-        id=int(cast(int, conversation.id)),
-        name=cast(str | None, conversation.name),
-        is_group=bool(cast(bool, conversation.is_group)),
-        created_by=cast(int | None, conversation.created_by),
-        created_at=cast(datetime, conversation.created_at),
-        participant_ids=[int(cast(int, m.user_id)) for m in members],
-    )
+    return _conversation_response(db, conversation)
 
 
 @router.post("/conversations/{conversation_id}/participants", response_model=ConversationResponse)
@@ -445,19 +438,7 @@ async def add_group_participant(
 
     db.commit()
 
-    members = (
-        db.query(ConversationParticipant)
-        .filter(ConversationParticipant.conversation_id == conversation.id)
-        .all()
-    )
-    return ConversationResponse(
-        id=int(cast(int, conversation.id)),
-        name=cast(str | None, conversation.name),
-        is_group=bool(cast(bool, conversation.is_group)),
-        created_by=cast(int | None, conversation.created_by),
-        created_at=cast(datetime, conversation.created_at),
-        participant_ids=[int(cast(int, m.user_id)) for m in members],
-    )
+    return _conversation_response(db, conversation)
 
 
 @router.delete("/conversations/{conversation_id}/participants/{user_id}", response_model=ConversationResponse)
@@ -494,19 +475,7 @@ async def remove_group_participant(
     db.delete(member)
     db.commit()
 
-    members = (
-        db.query(ConversationParticipant)
-        .filter(ConversationParticipant.conversation_id == conversation.id)
-        .all()
-    )
-    return ConversationResponse(
-        id=int(cast(int, conversation.id)),
-        name=cast(str | None, conversation.name),
-        is_group=bool(cast(bool, conversation.is_group)),
-        created_by=cast(int | None, conversation.created_by),
-        created_at=cast(datetime, conversation.created_at),
-        participant_ids=[int(cast(int, m.user_id)) for m in members],
-    )
+    return _conversation_response(db, conversation)
 
 
 @router.get("/groups/search", response_model=list[GroupSearchResult])
@@ -680,19 +649,7 @@ async def approve_group_join_request(
     request_row.status = GroupJoinRequestStatus.ACCEPTED
     db.commit()
 
-    members = (
-        db.query(ConversationParticipant)
-        .filter(ConversationParticipant.conversation_id == conversation.id)
-        .all()
-    )
-    return ConversationResponse(
-        id=int(cast(int, conversation.id)),
-        name=cast(str | None, conversation.name),
-        is_group=bool(cast(bool, conversation.is_group)),
-        created_by=cast(int | None, conversation.created_by),
-        created_at=cast(datetime, conversation.created_at),
-        participant_ids=[int(cast(int, m.user_id)) for m in members],
-    )
+    return _conversation_response(db, conversation)
 
 
 @router.post("/conversations/{conversation_id}/join-requests/{request_id}/reject", response_model=dict)
