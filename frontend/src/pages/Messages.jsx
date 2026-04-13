@@ -135,6 +135,8 @@ const Messages = () => {
   const [searchParams] = useSearchParams();
   const webCryptoAvailable = canUseWebCrypto();
   const MESSAGE_POLL_INTERVAL_MS = 2500;
+  const SIDEBAR_POLL_INTERVAL_MS = 4000;
+  const CONVERSATION_POLL_INTERVAL_MS = 3000;
 
   const [friends, setFriends] = useState([]);
   const [receivedRequests, setReceivedRequests] = useState([]);
@@ -321,9 +323,12 @@ const Messages = () => {
     }
   };
 
-  const loadSidebarData = async () => {
+  const loadSidebarData = async (options = {}) => {
+    const { silent = false } = options;
     try {
-      setError('');
+      if (!silent) {
+        setError('');
+      }
       const [friendsResponse, receivedResponse, sentResponse] = await Promise.all([
         connectionAPI.listFriends(),
         connectionAPI.listReceivedRequests(),
@@ -333,18 +338,102 @@ const Messages = () => {
       setReceivedRequests(receivedResponse.data || []);
       setSentRequests(sentResponse.data || []);
     } catch (err) {
-      setError(getApiErrorMessage(err, 'Failed to load connection data'));
+      if (!silent) {
+        setError(getApiErrorMessage(err, 'Failed to load connection data'));
+      }
     }
   };
 
-  const loadConversations = async () => {
+  const loadConversations = async (options = {}) => {
+    const { silent = false } = options;
     try {
       const response = await messageAPI.listConversations();
       setConversations(response.data || []);
     } catch (err) {
-      setError(getApiErrorMessage(err, 'Failed to load conversations'));
+      if (!silent) {
+        setError(getApiErrorMessage(err, 'Failed to load conversations'));
+      }
     }
   };
+
+  useEffect(() => {
+    let cancelled = false;
+    let inFlight = false;
+
+    const pollSidebar = async () => {
+      if (cancelled || inFlight) {
+        return;
+      }
+
+      inFlight = true;
+      try {
+        await loadSidebarData({ silent: true });
+      } finally {
+        inFlight = false;
+      }
+    };
+
+    const intervalId = setInterval(pollSidebar, SIDEBAR_POLL_INTERVAL_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(intervalId);
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    let inFlight = false;
+
+    const pollConversations = async () => {
+      if (cancelled || inFlight) {
+        return;
+      }
+
+      inFlight = true;
+      try {
+        await loadConversations({ silent: true });
+      } finally {
+        inFlight = false;
+      }
+    };
+
+    const intervalId = setInterval(pollConversations, CONVERSATION_POLL_INTERVAL_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(intervalId);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!activeConversation?.is_group || !isActiveGroupAdmin) {
+      return;
+    }
+
+    let cancelled = false;
+    let inFlight = false;
+
+    const pollJoinRequests = async () => {
+      if (cancelled || inFlight) {
+        return;
+      }
+
+      inFlight = true;
+      try {
+        const response = await messageAPI.listGroupJoinRequests(activeConversation.id);
+        setGroupJoinRequests(response.data || []);
+      } catch {
+        // Keep UI stable during background polling.
+      } finally {
+        inFlight = false;
+      }
+    };
+
+    const intervalId = setInterval(pollJoinRequests, SIDEBAR_POLL_INTERVAL_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(intervalId);
+    };
+  }, [activeConversation?.id, activeConversation?.is_group, isActiveGroupAdmin]);
 
   const searchUsers = async (query) => {
     try {
