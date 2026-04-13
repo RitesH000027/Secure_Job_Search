@@ -681,11 +681,14 @@ async def login_with_totp(
     email: str,
     password: str,
     totp_code: str,
+    request: Request,
     db: Session = Depends(get_db)
 ):
     """
     Login with email, password, and TOTP code (for users with 2FA enabled)
     """
+    _check_login_rate_limit(request, email)
+
     # Find user
     user = db.query(User).filter(User.email == email).first()
     

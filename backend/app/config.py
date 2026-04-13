@@ -11,7 +11,7 @@ class Settings(BaseSettings):
     
     # Application
     APP_NAME: str = "CareerBridge"
-    DEBUG: bool = True
+    DEBUG: bool = False
     SECRET_KEY: str
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
@@ -68,7 +68,13 @@ class Settings(BaseSettings):
     
     # Rate Limiting
     RATE_LIMIT_PER_MINUTE: int = 60
+    AUTH_RATE_LIMIT_PER_MINUTE: int = 20
     LOGIN_RATE_LIMIT_PER_HOUR: int = 10
+    RATE_LIMIT_USE_REDIS: bool = True
+    REDIS_RATE_LIMIT_PREFIX: str = "careerbridge:ratelimit"
+
+    # Request limits
+    MAX_REQUEST_SIZE_BYTES: int = 12582912  # 12MB
     
     # Logging
     LOG_LEVEL: str = "INFO"
