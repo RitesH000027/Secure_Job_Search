@@ -16,7 +16,6 @@ const initialFormState = {
   privacy_experience: 'public',
   privacy_skills: 'public',
   privacy_show_email: false,
-  privacy_show_phone: false,
   privacy_show_location: false,
   allow_profile_view_tracking: true,
 };
@@ -92,7 +91,6 @@ const Profile = () => {
         privacy_experience: profile.privacy_experience || 'public',
         privacy_skills: profile.privacy_skills || 'public',
         privacy_show_email: profile.privacy_show_email || false,
-        privacy_show_phone: profile.privacy_show_phone || false,
         privacy_show_location: profile.privacy_show_location || false,
         allow_profile_view_tracking: profile.allow_profile_view_tracking ?? true,
       });
@@ -344,7 +342,6 @@ const Profile = () => {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm text-gray-700">
             <label className="flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2"><input type="checkbox" name="privacy_show_email" checked={formData.privacy_show_email} onChange={handleChange} />Show email on profile</label>
-            <label className="flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2"><input type="checkbox" name="privacy_show_phone" checked={formData.privacy_show_phone} onChange={handleChange} />Show phone on profile</label>
             <label className="flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2"><input type="checkbox" name="privacy_show_location" checked={formData.privacy_show_location} onChange={handleChange} />Show location on profile</label>
             <label className="flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2"><input type="checkbox" name="allow_profile_view_tracking" checked={formData.allow_profile_view_tracking} onChange={handleChange} />Enable profile view tracking</label>
           </div>

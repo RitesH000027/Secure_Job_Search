@@ -30,7 +30,6 @@ const getApiErrorMessage = (err, fallbackMessage) => {
 const Register = () => {
   const [formData, setFormData] = useState({
     email: '',
-    mobile_number: '',
     password: '',
     full_name: '',
     role: 'user',
@@ -52,7 +51,6 @@ const Register = () => {
       setFormData((previous) => ({
         ...previous,
         email: previous.email || pendingRegistration.email || '',
-        mobile_number: previous.mobile_number || pendingRegistration.mobile_number || '',
       }));
     } catch {
       sessionStorage.removeItem(PENDING_REGISTRATION_KEY);
@@ -71,14 +69,13 @@ const Register = () => {
     const normalizedPayload = {
       ...formData,
       email: formData.email.trim(),
-      mobile_number: formData.mobile_number.trim(),
     };
 
     try {
       await authAPI.register(normalizedPayload);
       sessionStorage.setItem(
         PENDING_REGISTRATION_KEY,
-        JSON.stringify({ email: normalizedPayload.email, mobile_number: normalizedPayload.mobile_number })
+        JSON.stringify({ email: normalizedPayload.email })
       );
       setStep('verify');
     } catch (err) {
@@ -109,11 +106,9 @@ const Register = () => {
     }
 
     const resolvedEmail = formData.email.trim() || pendingRegistration?.email || '';
-    const resolvedMobileNumber = formData.mobile_number.trim() || pendingRegistration?.mobile_number || '';
-
-    if (!resolvedEmail || !resolvedMobileNumber) {
+    if (!resolvedEmail) {
       setLoading(false);
-      setError('Registration context missing (email/mobile). Please register again.');
+      setError('Registration context missing (email). Please register again.');
       setStep('register');
       return;
     }
@@ -121,7 +116,6 @@ const Register = () => {
     try {
       const response = await authAPI.verifyOTP({
         email: resolvedEmail,
-        mobile_number: resolvedMobileNumber,
         otp: normalizedOtp,
       });
 
@@ -148,11 +142,9 @@ const Register = () => {
     }
 
     const resolvedEmail = formData.email.trim() || pendingRegistration?.email || '';
-    const resolvedMobileNumber = formData.mobile_number.trim() || pendingRegistration?.mobile_number || '';
-
-    if (!resolvedEmail || !resolvedMobileNumber) {
+    if (!resolvedEmail) {
       setLoading(false);
-      setError('Registration context missing (email/mobile). Please register again.');
+      setError('Registration context missing (email). Please register again.');
       setStep('register');
       return;
     }
@@ -160,7 +152,6 @@ const Register = () => {
     try {
       await authAPI.resendOTP({
         email: resolvedEmail,
-        mobile_number: resolvedMobileNumber,
       });
     } catch (err) {
       setError(getApiErrorMessage(err, 'Failed to resend OTP.'));
@@ -177,7 +168,7 @@ const Register = () => {
           {step === 'register' ? 'Join your professional network' : 'Verify your account'}
         </h1>
         <p className="text-sm text-gray-500 mt-1">
-          {step === 'register' ? 'Build your profile and start connecting.' : 'Enter the OTP sent to your email and mobile.'}
+          {step === 'register' ? 'Build your profile and start connecting.' : 'Enter the OTP sent to your email.'}
         </p>
 
         {error && <div className="mt-4 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</div>}
@@ -186,7 +177,6 @@ const Register = () => {
           <form className="mt-4 sm:mt-6 space-y-2.5 sm:space-y-3" onSubmit={handleRegister}>
             <input className="li-input" name="full_name" placeholder="Full name" value={formData.full_name} onChange={handleChange} required />
             <input className="li-input" name="email" type="email" placeholder="Email" value={formData.email} onChange={handleChange} required />
-            <input className="li-input" name="mobile_number" type="tel" placeholder="Mobile number" value={formData.mobile_number} onChange={handleChange} required />
             <input className="li-input" name="password" type="password" placeholder="Password" value={formData.password} onChange={handleChange} required />
             <div>
               <label htmlFor="role" className="block text-xs text-gray-500 mb-1">Register as</label>

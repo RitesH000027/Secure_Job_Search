@@ -157,22 +157,13 @@ async def register(
     - Generates and sends OTP to user's email
     - Returns success message
     """
-    # Check if user already exists
+    # Check if user/mobile already exists
     existing_user = db.query(User).filter(User.email == user_data.email).first()
-    if existing_user:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Email already registered"
-        )
-    
-    existing_mobile = db.query(User).filter(User.mobile_number == user_data.mobile_number).first()
-    if existing_mobile:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Mobile number already registered"
-        )
+    normalized_mobile = user_data.mobile_number.strip() if user_data.mobile_number else None
+    existing_mobile = None
+    if normalized_mobile:
+        existing_mobile = db.query(User).filter(User.mobile_number == normalized_mobile).first()
 
-    # Create new user
     full_name = sanitize_text(user_data.full_name, max_length=100)
     if not full_name:
         raise HTTPException(
@@ -180,15 +171,71 @@ async def register(
             detail="Full name cannot be empty"
         )
 
+    # Recovery path: allow re-registration for unverified accounts.
+    if existing_user:
+        if existing_user.is_verified:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Email already registered"
+            )
+
+        if existing_mobile and existing_mobile.id != existing_user.id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Mobile number already registered"
+            )
+
+        existing_user.full_name = full_name
+        existing_user.hashed_password = hash_password(user_data.password)
+        existing_user.role = user_data.role
+        existing_user.mobile_number = normalized_mobile
+        existing_user.is_active = True
+        existing_user.is_verified = False
+        existing_user.is_mobile_verified = True
+        existing_user.is_suspended = False
+
+        profile = db.query(Profile).filter(Profile.user_id == existing_user.id).first()
+        if not profile:
+            db.add(Profile(user_id=existing_user.id))
+
+        db.commit()
+        db.refresh(existing_user)
+
+        shared_otp, _ = create_otp_token(db, existing_user.id, purpose="registration")
+        background_tasks.add_task(send_otp_email, existing_user.email, shared_otp, "registration")
+        if existing_user.mobile_number:
+            background_tasks.add_task(send_otp_sms, existing_user.mobile_number, shared_otp, "registration")
+
+        log_audit_event(
+            db,
+            action="registration_reinitiated",
+            target_type="user",
+            actor_user_id=existing_user.id,
+            target_id=str(existing_user.id),
+            details={"email": existing_user.email, "role": existing_user.role.value},
+        )
+        db.commit()
+
+        return {
+            "message": "Existing unverified account found. A new OTP has been sent to your email.",
+            "email": existing_user.email,
+        }
+
+    if existing_mobile:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Mobile number already registered"
+        )
+
     new_user = User(
         email=user_data.email,
-        mobile_number=user_data.mobile_number,
+        mobile_number=normalized_mobile,
         hashed_password=hash_password(user_data.password),
         full_name=full_name,
         role=user_data.role,
         is_active=True,
         is_verified=False,
-        is_mobile_verified=False,
+        is_mobile_verified=True,
         is_suspended=False
     )
     
@@ -204,7 +251,8 @@ async def register(
     # Generate one OTP and send the same code to both email and mobile
     shared_otp, _ = create_otp_token(db, new_user.id, purpose="registration")
     background_tasks.add_task(send_otp_email, new_user.email, shared_otp, "registration")
-    background_tasks.add_task(send_otp_sms, new_user.mobile_number, shared_otp, "registration")
+    if new_user.mobile_number:
+        background_tasks.add_task(send_otp_sms, new_user.mobile_number, shared_otp, "registration")
 
     log_audit_event(
         db,
@@ -217,9 +265,8 @@ async def register(
     db.commit()
 
     return {
-        "message": "Registration successful. Please verify using the OTP sent to both email and mobile.",
+        "message": "Registration successful. Please verify using the OTP sent to your email.",
         "email": new_user.email,
-        "mobile_number": new_user.mobile_number
     }
 
 
@@ -243,16 +290,10 @@ async def verify_otp_endpoint(
             detail="User not found"
         )
     
-    if user.is_verified and user.is_mobile_verified:
+    if user.is_verified:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Email and mobile already verified"
-        )
-
-    if user.mobile_number != otp_data.mobile_number:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Mobile number does not match the registered account"
+            detail="Email already verified"
         )
     
     # Verify shared OTP
@@ -308,24 +349,19 @@ async def resend_otp(
             detail="User not found"
         )
     
-    if user.is_verified and user.is_mobile_verified:
+    if user.is_verified:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Email and mobile already verified"
-        )
-
-    if user.mobile_number != otp_data.mobile_number:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Mobile number does not match the registered account"
+            detail="Email already verified"
         )
     
     # Generate and resend one shared OTP
     shared_otp, _ = create_otp_token(db, user.id, purpose="registration")
     background_tasks.add_task(send_otp_email, user.email, shared_otp, "registration")
-    background_tasks.add_task(send_otp_sms, user.mobile_number, shared_otp, "registration")
+    if user.mobile_number:
+        background_tasks.add_task(send_otp_sms, user.mobile_number, shared_otp, "registration")
     
-    return {"message": "OTP resent successfully. Please check your email and mobile."}
+    return {"message": "OTP resent successfully. Please check your email."}
 
 
 @router.post("/login", response_model=Token)
@@ -370,12 +406,6 @@ async def login(
             detail="Email not verified. Please verify your email first."
         )
 
-    if user.mobile_number and not user.is_mobile_verified:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Mobile number not verified. Please verify your mobile OTP first."
-        )
-    
     # Update last login
     user.updated_at = datetime.utcnow()
     log_audit_event(
@@ -717,12 +747,6 @@ async def login_with_totp(
             detail="Email not verified. Please verify your email first."
         )
 
-    if user.mobile_number and not user.is_mobile_verified:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Mobile number not verified. Please verify your mobile OTP first."
-        )
-    
     # Verify TOTP if enabled
     if user.totp_enabled:
         if not user.totp_secret:
