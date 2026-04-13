@@ -2,6 +2,7 @@
 Application Configuration
 Loads environment variables and provides settings for the application
 """
+import json
 from pydantic_settings import BaseSettings
 from typing import List
 
@@ -45,18 +46,7 @@ class Settings(BaseSettings):
     REDIS_URL: str = "redis://localhost:6379/0"
     
     # Security
-    CORS_ORIGINS: List[str] = [
-        "http://192.168.3.40",
-        "http://192.168.3.40:4173",
-        "https://192.168.3.40",
-        "https://192.168.3.40:4173",
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-        "http://localhost:5174",
-        "http://127.0.0.1:5174",
-        "http://localhost:5175",
-        "http://127.0.0.1:5175",
-    ]
+    CORS_ORIGINS: str = "http://192.168.3.40,http://192.168.3.40:4173,https://192.168.3.40,https://192.168.3.40:4173,http://localhost:5173,http://127.0.0.1:5173,http://localhost:5174,http://127.0.0.1:5174,http://localhost:5175,http://127.0.0.1:5175"
     SESSION_COOKIE_SECURE: bool = False
     SESSION_COOKIE_HTTPONLY: bool = True
     SESSION_COOKIE_SAMESITE: str = "Lax"
@@ -85,11 +75,34 @@ class Settings(BaseSettings):
     PKI_PUBLIC_KEY_PATH: str = "/home/iiitd/projects/FCS/backend/keys/app_signing_public.pem"
 
     # Host validation
-    ALLOWED_HOSTS: List[str] = [
-        "localhost",
-        "127.0.0.1",
-        "192.168.3.40",
-    ]
+    ALLOWED_HOSTS: str = "localhost,127.0.0.1,192.168.3.40"
+
+    @staticmethod
+    def _parse_list(raw_value: str | List[str]) -> List[str]:
+        if isinstance(raw_value, list):
+            return [item.strip() for item in raw_value if item and item.strip()]
+
+        value = (raw_value or "").strip()
+        if not value:
+            return []
+
+        if value.startswith("["):
+            try:
+                parsed = json.loads(value)
+                if isinstance(parsed, list):
+                    return [str(item).strip() for item in parsed if str(item).strip()]
+            except json.JSONDecodeError:
+                pass
+
+        return [item.strip() for item in value.split(",") if item.strip()]
+
+    @property
+    def cors_origins_list(self) -> List[str]:
+        return self._parse_list(self.CORS_ORIGINS)
+
+    @property
+    def allowed_hosts_list(self) -> List[str]:
+        return self._parse_list(self.ALLOWED_HOSTS)
     
     class Config:
         env_file = ".env"
