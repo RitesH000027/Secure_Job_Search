@@ -239,7 +239,6 @@ const Dashboard = () => {
       <div className="li-card p-4 sm:p-6">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg sm:text-xl font-semibold text-gray-900">Home feed</h2>
-          <p className="text-xs text-gray-500">{totalFeedItems} items</p>
         </div>
 
         {loadingFeed ? (

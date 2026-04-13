@@ -143,6 +143,8 @@ const Layout = () => {
     { to: '/resume', label: 'Resume' },
   ];
 
+  const previewConnections = connections.slice(0, 5);
+
   return (
     <div className="min-h-screen bg-[#f3f2ef]">
       <header className="bg-white border-b border-gray-200 sticky top-0 z-20">
@@ -271,7 +273,7 @@ const Layout = () => {
                   {connections.length === 0 ? (
                     <p className="px-3 py-2 text-xs text-gray-500">No connections yet.</p>
                   ) : (
-                    connections.map((friend) => (
+                    previewConnections.map((friend) => (
                       <button
                         key={friend.id}
                         type="button"
@@ -282,6 +284,15 @@ const Layout = () => {
                         <p className="text-xs text-gray-500">{friend.headline || friend.role}</p>
                       </button>
                     ))
+                  )}
+                  {connections.length > 5 && (
+                    <button
+                      type="button"
+                      className="w-full px-3 py-2 text-left text-sm font-medium text-[#0a66c2] hover:bg-blue-50 border-t border-gray-100"
+                      onClick={() => navigate('/friends')}
+                    >
+                      See more friends
+                    </button>
                   )}
                 </div>
               )}

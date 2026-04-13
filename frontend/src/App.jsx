@@ -13,6 +13,7 @@ import Messages from './pages/Messages';
 import Companies from './pages/Companies';
 import CompanyJobs from './pages/CompanyJobs';
 import SearchResults from './pages/SearchResults';
+import Friends from './pages/Friends';
 import PrivateRoute from './components/PrivateRoute';
 
 function App() {
@@ -62,6 +63,11 @@ function App() {
           <Route path="/messages" element={
             <PrivateRoute>
               <Messages />
+            </PrivateRoute>
+          } />
+          <Route path="/friends" element={
+            <PrivateRoute>
+              <Friends />
             </PrivateRoute>
           } />
           <Route path="/admin" element={
