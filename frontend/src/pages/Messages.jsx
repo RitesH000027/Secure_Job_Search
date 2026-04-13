@@ -134,9 +134,9 @@ const Messages = () => {
   const { user } = useAuth();
   const [searchParams] = useSearchParams();
   const webCryptoAvailable = canUseWebCrypto();
-  const MESSAGE_POLL_INTERVAL_MS = 2500;
-  const SIDEBAR_POLL_INTERVAL_MS = 4000;
-  const CONVERSATION_POLL_INTERVAL_MS = 3000;
+  const MESSAGE_POLL_INTERVAL_MS = 1500;
+  const SIDEBAR_POLL_INTERVAL_MS = 2500;
+  const CONVERSATION_POLL_INTERVAL_MS = 2000;
 
   const [friends, setFriends] = useState([]);
   const [receivedRequests, setReceivedRequests] = useState([]);

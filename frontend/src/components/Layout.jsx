@@ -14,6 +14,7 @@ const Layout = () => {
   const [searchLoading, setSearchLoading] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const searchBoxRef = useRef(null);
+  const CONNECTIONS_REFRESH_INTERVAL_MS = 3500;
 
   useEffect(() => {
     const loadConnectionsCount = async () => {
@@ -31,6 +32,43 @@ const Layout = () => {
     if (user) {
       loadConnectionsCount();
     }
+  }, [user]);
+
+  useEffect(() => {
+    if (!user) {
+      return;
+    }
+
+    let cancelled = false;
+    let inFlight = false;
+
+    const pollConnections = async () => {
+      if (cancelled || inFlight) {
+        return;
+      }
+
+      inFlight = true;
+      try {
+        const response = await connectionAPI.listFriends();
+        if (cancelled) {
+          return;
+        }
+
+        const friends = Array.isArray(response.data) ? response.data : [];
+        setConnections(friends);
+        setConnectionsCount(friends.length);
+      } catch {
+        // Keep the last known connection list during background refresh.
+      } finally {
+        inFlight = false;
+      }
+    };
+
+    const intervalId = setInterval(pollConnections, CONNECTIONS_REFRESH_INTERVAL_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(intervalId);
+    };
   }, [user]);
 
   useEffect(() => {

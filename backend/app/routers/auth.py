@@ -16,7 +16,7 @@ from threading import Lock
 from app.database import get_db
 from app.models.user import User, Profile
 from app.schemas.user import (
-    UserRegister, UserLogin, OTPVerify, OTPResend,
+    UserRegister, UserLogin, LoginTOTP, OTPVerify, OTPResend,
     PasswordReset, PasswordResetConfirm, HighRiskOTPRequest, Token, TokenRefresh,
     UserResponse, UserWithProfile
 )
@@ -708,21 +708,19 @@ async def disable_totp(
 
 @router.post("/login-totp", response_model=Token)
 async def login_with_totp(
-    email: str,
-    password: str,
-    totp_code: str,
+    login_data: LoginTOTP,
     request: Request,
     db: Session = Depends(get_db)
 ):
     """
     Login with email, password, and TOTP code (for users with 2FA enabled)
     """
-    _check_login_rate_limit(request, email)
+    _check_login_rate_limit(request, login_data.email)
 
     # Find user
-    user = db.query(User).filter(User.email == email).first()
+    user = db.query(User).filter(User.email == login_data.email).first()
     
-    if not user or not verify_password(password, user.hashed_password):
+    if not user or not verify_password(login_data.password, user.hashed_password):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect email or password",
@@ -755,7 +753,7 @@ async def login_with_totp(
                 detail="TOTP configuration error"
             )
         
-        if not verify_totp(user.totp_secret, totp_code):
+        if not verify_totp(user.totp_secret, login_data.totp_code):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid TOTP code"

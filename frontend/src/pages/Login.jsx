@@ -19,7 +19,12 @@ const Login = () => {
       await login(email, password);
       navigate('/dashboard');
     } catch (err) {
-      setError(err.response?.data?.detail || 'Unable to sign in with those credentials.');
+      const status = err?.response?.status;
+      if (status === 429) {
+        setError('Too many attempts. Please try again later.');
+      } else {
+        setError('Wrong credentials.');
+      }
     } finally {
       setLoading(false);
     }

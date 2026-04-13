@@ -35,6 +35,13 @@ class UserLogin(BaseModel):
     password: str
 
 
+class LoginTOTP(BaseModel):
+    """Schema for login with TOTP"""
+    email: EmailStr
+    password: str
+    totp_code: str = Field(..., min_length=6, max_length=6)
+
+
 class OTPVerify(BaseModel):
     """Schema for OTP verification"""
     email: EmailStr
