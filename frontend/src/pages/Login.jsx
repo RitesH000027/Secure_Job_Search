@@ -29,7 +29,7 @@ const Login = () => {
     <div className="min-h-screen bg-[#f3f2ef] flex items-center justify-center px-4">
       <div className="w-full max-w-5xl grid md:grid-cols-2 gap-8 items-center">
         <div>
-          <img src="/CB.png" alt="CareerBridge" className="w-14 h-14 rounded-lg object-cover border border-gray-200 bg-white" />
+          <img src="/CB.png" alt="CareerBridge" className="w-14 h-14 rounded-lg object-contain p-1 border border-gray-200 bg-white" />
           <h1 className="mt-6 text-4xl font-light text-[#0a66c2] leading-tight">Welcome back to your professional network</h1>
           <p className="mt-4 text-gray-600">Sign in to manage your profile, applications, and recruiter conversations.</p>
         </div>
