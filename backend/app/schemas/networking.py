@@ -134,6 +134,8 @@ class ConversationResponse(BaseModel):
     created_at: datetime
     participant_ids: list[int]
     participant_names: dict[str, str] = {}
+    last_message_created_at: Optional[datetime] = None
+    last_message_sender_id: Optional[int] = None
 
 
 class MessageResponse(BaseModel):

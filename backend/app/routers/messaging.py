@@ -91,6 +91,13 @@ def _conversation_response(db: Session, conversation: Conversation) -> Conversat
         if uid in user_map
     }
 
+    latest_message = (
+        db.query(Message)
+        .filter(Message.conversation_id == conversation.id)
+        .order_by(Message.created_at.desc())
+        .first()
+    )
+
     return ConversationResponse(
         id=int(cast(int, conversation.id)),
         name=cast(str | None, conversation.name),
@@ -99,6 +106,8 @@ def _conversation_response(db: Session, conversation: Conversation) -> Conversat
         created_at=cast(datetime, conversation.created_at),
         participant_ids=participant_ids,
         participant_names=participant_names,
+        last_message_created_at=cast(datetime | None, latest_message.created_at if latest_message else None),
+        last_message_sender_id=cast(int | None, latest_message.sender_id if latest_message else None),
     )
 
 
@@ -198,6 +207,7 @@ async def send_message(
         message_type=payload.message_type,
     )
     db.add(message)
+    conversation.updated_at = datetime.utcnow()
 
     log_audit_event(
         db,

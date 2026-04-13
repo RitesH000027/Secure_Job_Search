@@ -8,6 +8,7 @@ const textDecoder = new TextDecoder();
 
 const DEVICE_PUBLIC_KEY_STORAGE = 'cb_device_public_key_spki';
 const DEVICE_PRIVATE_KEY_STORAGE = 'cb_device_private_key_pkcs8';
+const CONVERSATION_SEEN_MAP_STORAGE = 'cb_conversation_last_seen';
 
 const bytesToBase64 = (bytes) => {
   const binary = Array.from(bytes, (byte) => String.fromCharCode(byte)).join('');
@@ -144,6 +145,17 @@ const Messages = () => {
   const [searchResults, setSearchResults] = useState([]);
   const [conversations, setConversations] = useState([]);
   const [messages, setMessages] = useState([]);
+  const [seenConversationMap, setSeenConversationMap] = useState(() => {
+    try {
+      if (typeof window === 'undefined') {
+        return {};
+      }
+      const raw = localStorage.getItem(CONVERSATION_SEEN_MAP_STORAGE);
+      return raw ? JSON.parse(raw) : {};
+    } catch {
+      return {};
+    }
+  });
 
   const [searchQuery, setSearchQuery] = useState('');
   const [activeFriendId, setActiveFriendId] = useState(null);
@@ -249,6 +261,48 @@ const Messages = () => {
     });
     return map;
   }, [conversations, user?.id]);
+
+  const markConversationSeen = (conversationId, seenAtValue) => {
+    if (!conversationId || !seenAtValue) {
+      return;
+    }
+
+    const seenAt = String(seenAtValue);
+    setSeenConversationMap((previous) => {
+      const previousSeenAt = previous[String(conversationId)];
+      if (previousSeenAt && previousSeenAt >= seenAt) {
+        return previous;
+      }
+
+      const next = { ...previous, [String(conversationId)]: seenAt };
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(CONVERSATION_SEEN_MAP_STORAGE, JSON.stringify(next));
+      }
+      return next;
+    });
+  };
+
+  const hasUnreadForFriend = (friendId) => {
+    const conversation = conversationMapByFriendId[friendId];
+    if (!conversation || conversation.is_group) {
+      return false;
+    }
+
+    if (!conversation.last_message_created_at || !conversation.last_message_sender_id) {
+      return false;
+    }
+
+    if (conversation.last_message_sender_id === user?.id) {
+      return false;
+    }
+
+    const seenAt = seenConversationMap[String(conversation.id)];
+    if (!seenAt) {
+      return true;
+    }
+
+    return String(conversation.last_message_created_at) > String(seenAt);
+  };
 
   const groupConversations = useMemo(
     () => (conversations || []).filter((conversation) => conversation.is_group),
@@ -493,6 +547,17 @@ const Messages = () => {
     };
   }, [activeConversationId]);
 
+  useEffect(() => {
+    if (!activeConversationId || messages.length === 0) {
+      return;
+    }
+
+    const lastMessage = messages[messages.length - 1];
+    if (lastMessage?.created_at) {
+      markConversationSeen(activeConversationId, lastMessage.created_at);
+    }
+  }, [activeConversationId, messages]);
+
   const initializeConversationKeyForParticipants = async (conversation) => {
     const participantIds = [...new Set(conversation.participant_ids || [])];
     if (!participantIds.length) {
@@ -646,6 +711,9 @@ const Messages = () => {
       setActiveConversationTitle(friendMap[friendId]?.full_name || `User #${friendId}`);
       setActiveConversationSubtitle(friendMap[friendId]?.headline || friendMap[friendId]?.role || 'Connected friend');
       await prepareConversation(conversation);
+      if (conversation.last_message_created_at) {
+        markConversationSeen(conversation.id, conversation.last_message_created_at);
+      }
     } catch (err) {
       setError(getApiErrorMessage(err, err?.message || 'Unable to open encrypted chat'));
       setMessages([]);
@@ -662,6 +730,9 @@ const Messages = () => {
       setActiveConversationSubtitle(`${(conversation.participant_ids || []).length} participants`);
       setGroupRename(conversation.name || '');
       await prepareConversation(conversation);
+      if (conversation.last_message_created_at) {
+        markConversationSeen(conversation.id, conversation.last_message_created_at);
+      }
       if (conversation.created_by === user?.id) {
         const requestsResponse = await messageAPI.listGroupJoinRequests(conversation.id);
         setGroupJoinRequests(requestsResponse.data || []);
@@ -1008,7 +1079,14 @@ const Messages = () => {
                   >
                     <div className="flex items-start justify-between gap-2">
                       <button type="button" className="text-left" onClick={() => openChatWithFriend(friend.id)}>
-                        <p className="text-sm font-semibold text-gray-900">{friend.full_name}</p>
+                        <div className="flex items-center gap-2">
+                          <p className="text-sm font-semibold text-gray-900">{friend.full_name}</p>
+                          {hasUnreadForFriend(friend.id) && (
+                            <span className="rounded-full bg-red-100 text-red-700 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide">
+                              New
+                            </span>
+                          )}
+                        </div>
                         <p className="text-xs text-gray-500">{friend.headline || friend.role}</p>
                       </button>
                       <button type="button" className="text-xs text-red-600 hover:underline" onClick={() => handleRemoveFriend(friend.id)}>
