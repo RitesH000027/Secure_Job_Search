@@ -6,6 +6,17 @@ cd ~/projects/FCS
 echo "Syncing backend repo (fast-forward only)..."
 git pull --ff-only
 
+if [[ ! -f ".env" ]]; then
+  echo "Missing ~/projects/FCS/.env"
+  echo "Create it first and set SECRET_KEY, DATABASE_URL, ENCRYPTION_KEY, REDIS_URL"
+  exit 1
+fi
+
+echo "Loading environment from ~/projects/FCS/.env..."
+set -a
+source .env
+set +a
+
 cd backend
 
 if [[ ! -d ".venv" ]]; then

@@ -23,6 +23,11 @@ if [[ ! -f "$REPO_ROOT/.env" ]]; then
   exit 1
 fi
 
+echo "[v0] Loading environment from $REPO_ROOT/.env..."
+set -a
+source "$REPO_ROOT/.env"
+set +a
+
 echo "[v0] Restarting backend on 0.0.0.0:${BACKEND_PORT}..."
 fuser -k "${BACKEND_PORT}/tcp" >/dev/null 2>&1 || true
 nohup ./.venv/bin/python -m uvicorn app.main:app --host 0.0.0.0 --port "$BACKEND_PORT" > "$REPO_ROOT/backend/backend_v0.log" 2>&1 &
@@ -41,7 +46,11 @@ echo "[v0] Waiting briefly for services to come up..."
 sleep 2
 
 echo "[v0] Backend health check:"
-curl -sS "http://127.0.0.1:${BACKEND_PORT}/health" || true
+if ! curl -sS "http://127.0.0.1:${BACKEND_PORT}/health"; then
+  echo
+  echo "[v0][error] Backend did not become healthy. Recent backend logs:"
+  tail -n 80 "$REPO_ROOT/backend/backend_v0.log" || true
+fi
 
 echo
 
