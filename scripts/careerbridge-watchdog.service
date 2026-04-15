@@ -1,0 +1,8 @@
+[Unit]
+Description=CareerBridge uptime watchdog
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/home/iiitd/projects/FCS/scripts/healthcheck_and_recover.sh

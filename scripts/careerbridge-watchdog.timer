@@ -1,0 +1,11 @@
+[Unit]
+Description=Run CareerBridge watchdog every minute
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=1min
+Persistent=true
+Unit=careerbridge-watchdog.service
+
+[Install]
+WantedBy=timers.target
