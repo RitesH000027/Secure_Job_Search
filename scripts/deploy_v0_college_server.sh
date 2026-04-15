@@ -34,6 +34,24 @@ nohup ./.venv/bin/python -m uvicorn app.main:app --host 0.0.0.0 --port "$BACKEND
 
 echo "[v0] Building frontend..."
 cd "$REPO_ROOT/frontend"
+
+if [[ -s "$HOME/.nvm/nvm.sh" ]]; then
+  # Ensure Vite uses a modern Node runtime in non-interactive deploy shells.
+  source "$HOME/.nvm/nvm.sh"
+  nvm use 20 >/dev/null || nvm install 20 >/dev/null
+fi
+
+if ! command -v node >/dev/null 2>&1; then
+  echo "[v0][error] Node.js is not installed. Install Node 20 (recommended via nvm)."
+  exit 1
+fi
+
+NODE_MAJOR="$(node -p 'process.versions.node.split(".")[0]')"
+if [[ "$NODE_MAJOR" -lt 20 ]]; then
+  echo "[v0][error] Node.js $(node -v) is too old for current Vite. Use Node 20+ (recommended: nvm install 20)."
+  exit 1
+fi
+
 npm install
 export VITE_API_BASE_URL="http://192.168.3.40:${BACKEND_PORT}"
 npm run build
