@@ -1,0 +1,19 @@
+[Unit]
+Description=CareerBridge Backend (FastAPI)
+After=network.target
+Wants=careerbridge-frontend.service
+
+[Service]
+Type=simple
+User=iiitd
+WorkingDirectory=/home/iiitd/projects/FCS/backend
+Environment="PATH=/home/iiitd/projects/FCS/backend/.venv/bin"
+EnvironmentFile=/home/iiitd/projects/FCS/.env
+ExecStart=/home/iiitd/projects/FCS/backend/.venv/bin/python -m uvicorn app.main:app --host 0.0.0.0 --port 8010
+Restart=always
+RestartSec=10
+StandardOutput=append:/home/iiitd/projects/FCS/backend/backend.log
+StandardError=append:/home/iiitd/projects/FCS/backend/backend.log
+
+[Install]
+WantedBy=multi-user.target
